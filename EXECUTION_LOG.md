@@ -4,7 +4,7 @@ This file records what was implemented, what was validated, and what remains
 unstarted after each plan stage. It is part of the project record and must be
 updated after every future stage.
 
-## Current summary — 2026-09-30
+## Current summary — 2026-10-04
 
 This summary and the current stage table supersede older blocker descriptions
 below. Dated stage entries are preserved as historical records, not rewritten
@@ -13,49 +13,51 @@ as if later validation had already happened.
 - The notebook and dashboard retrieve fresh, bounded production PDC evidence
   only. Local JSONL exports and SQLite are not interface data sources and
   cannot be used as a fallback after an API failure.
-- Both interfaces accept one or more ISO3 countries, for example
-  `PHL, BGD, NPL`. Results, charts, and downloads remain country-specific;
-  the View country control switches loaded results without another API call.
-  Group event counts deduplicate shared identifiers rather than summing
-  country exposure values.
-- The POST pagination bug and empty-result chart-schema crash were fixed.
-  The latest implementation review passed 47 focused local tests, Python
-  compilation, and notebook schema checks; these checks were not rerun for
-  this documentation update.
-- Fresh full-year 2024 production reads for Philippines, Bangladesh, and Nepal
-  passed independent notebook/dashboard data-path agreement and export
-  validation. The earlier missing-token blocker was cleared for those reads.
-  The saved evidence is a record of fresh reads on 2026-09-30, not a new live
-  check performed during this documentation update.
-- Visual sign-off is incomplete. The dashboard loaded the multi-country
-  result, but the user stopped the review because figures need further work.
-  A confirmed completeness-chart denominator defect can produce 200% with
-  both impact types selected. Notebook browser inspection requires Jupyter
-  authentication; map/footprint and full timeline interaction checks remain.
+- The dashboard was redesigned on 2026-10-01 (tabs: Overview, Map, Events,
+  Exposure, Event detail, Compare countries, Data quality, Download). It
+  accepts up to five countries and up to five consecutive years; results stay
+  country-specific and shared events are counted once. Every figure is listed
+  in [DASHBOARD_FIGURES.md](docs/DASHBOARD_FIGURES.md).
+- The notebook still uses the pre-redesign figures (`visuals.py`) and accepts
+  one year only. It still offers the one-year annual overview; the dashboard
+  does not, and the country choropleth is not shown in either interface.
+- The completeness-chart 200% defect is fixed and now has a regression test.
+  Clicking a bar in the dashboard's "Largest events" chart selects the event
+  (verified in a headless browser on 2026-10-04 with synthetic data); map-dot
+  clicks could not be checked offline and remain to be confirmed.
+- The 2026-10-04 code review fixed redirect handling (the API bearer token can
+  no longer follow a redirect to another host), stale API-cache pages, an
+  uncaught dropped-connection error, queued requests continuing after a fatal
+  error, a stale Download-tab bundle, and two pandas deprecation warnings. 68
+  local tests pass. No production query was rerun: the cloud review session
+  had no API token and its network policy blocked the Montandon host.
 - Real-local validation was deliberately skipped after switching the
   interfaces to API-only. The user reported a complete local profile with
   zero invalid JSON rows; no profile was rerun here, and index completion is
   not confirmed. Neither is a blocker for the API-only interfaces.
-- Static report images remain deferred. They would make offline Markdown/HTML
-  reports visually self-contained, but are not needed for live retrieval or
-  the interactive charts. No Git commit, push, or deployment was performed;
-  the project directory is not a Git repository.
+- Static report images remain deferred. The project is now a Git repository
+  (GitHub `arunissun/Gaurd-PDC-explorer-`); earlier entries that say it is not
+  describe the state at that time.
 
 ### Which file records what?
 
-- [Original implementation plan](../PDC_MONTANDON_NOTEBOOK_DASHBOARD_PLAN.md):
-  staged requirements and intended scope. Its original mixed-source design
-  is overridden for the interfaces by the later API-only user request recorded
-  here; the plan itself was not edited during this update.
+- Original implementation plan: `PDC_MONTANDON_NOTEBOOK_DASHBOARD_PLAN.md`,
+  kept outside the repository at `C:\Users\arun.gandhi\Downloads\`. It holds the
+  staged requirements and intended scope. Its original mixed-source design is
+  overridden for the interfaces by the later API-only user request recorded
+  here; the plan itself was not edited.
 - [EXECUTION_LOG.md](EXECUTION_LOG.md): current implementation summary, stage
   status, dated actions, validation evidence, blockers, and deferred work.
 - [QUERY_POLICY.md](docs/QUERY_POLICY.md): current request bounds, country-group
   behavior, pagination, source-selection, and failure rules.
-- [Successful annual production review](outputs/api-review-20260930T131353Z/review_summary.json):
-  machine-readable country counts, pagination completion, data-path agreement,
-  export-validation results, quality evidence, and retrieval timestamps.
-- `README.md`: setup and usage overview; left unchanged during this update at
-  the user's request, so its older status overview is not the current record.
+- [DASHBOARD_FIGURES.md](docs/DASHBOARD_FIGURES.md): one or two lines per
+  dashboard figure, by tab.
+- Successful annual production review:
+  `outputs/api-review-20260930T131353Z/review_summary.json` on the local
+  machine. `outputs/` is ignored by Git, so this evidence is not in the
+  repository.
+- `README.md`: setup and usage overview; left unchanged at the user's request,
+  so its older status overview is not the current record.
 
 ## Location decision
 
@@ -71,20 +73,22 @@ separate from them.
 
 ## Stage status
 
+Updated 2026-10-04.
+
 | Stage | Status |
 |---|---|
 | 0 — Create project and contracts | Complete |
 | 1 — Profile API and local export | API profiled; user-reported local profile complete with zero invalid JSON rows; not rerun in this review |
-| 2 — Query/data contracts implementation | Complete |
-| 3 — API provider | Implemented; POST pagination corrected and fresh annual production queries validated |
+| 2 — Query/data contracts implementation | Complete; extended to up to five consecutive years for country detail (2026-10-01) |
+| 3 — API provider | Implemented; POST pagination corrected; adaptive retries, parallel windows and partial results added (2026-10-01); redirect, cache and error-handling fixes (2026-10-04) |
 | 4 — Local index/provider | Implemented and fixture-validated; real index completion unconfirmed; not used by interfaces |
 | 5 — Correlation, routing, provenance | Implemented and fixture/fresh API-validated; ambiguous candidates retained; real-local compare skipped |
-| 6 — Analytical tables and figures | Implemented and locally/data-path validated; known completeness-chart defect and visual corrections pending |
-| 7 — Maps | Implemented and fixture/API-validated; manual map/footprint UAT pending |
-| 8 — Interactive notebook | Implemented; widget tests and fresh production data path validated; authenticated browser UAT pending |
-| 9 — Streamlit dashboard | Implemented; focused tests and live group retrieval passed; browser review partial, figure corrections pending |
+| 6 — Analytical tables and figures | Implemented; completeness defect fixed with a regression test; dashboard figures in `figures.py` have no direct tests yet |
+| 7 — Maps | Implemented; dashboard has event points, density and PDC alert areas; no clustering; choropleth not shown in any interface; manual map UAT pending |
+| 8 — Interactive notebook | Implemented on the pre-redesign figures, one year only; authenticated browser UAT pending; rebuild or retirement undecided |
+| 9 — Streamlit dashboard | Redesigned 2026-10-01; live-tested on BGD 2024–25 and PHL 2023–26; headless browser checks on synthetic data 2026-10-04; all-country overview not offered |
 | 10 — Exports and end-to-end validation | Core exports validated on fixtures and fresh three-country 2024 queries; real-local scenarios skipped and static report images deferred |
-| 11 — Temporal evolution extension | Implemented; fixture/cached tests and fresh annual snapshot/summary checks passed; full visual UAT pending |
+| 11 — Temporal evolution extension | Implemented in the notebook; the redesigned dashboard shows peak/latest values and change counts but no snapshot timeline chart |
 
 ## Stage 0 — Create project and contracts
 
@@ -822,3 +826,75 @@ host). No push, deploy, or live write. README unchanged.
   Event detail selector works. To debug.
 - Unit tests for the new analysis/figure/map functions; all-country overview;
   notebook rebuild.
+
+## 2026-10-04 — Code review and fixes
+
+Requested by the user: review the work, check the earlier status summary
+against the repository, fix the issues found, update this log, and verify in a
+browser. Done in a cloud session on a fresh clone. No production API access
+was possible: there was no `.env` or token, and the session's network policy
+rejected connections to `montandon-eoapi.ifrc.org`. No live write, deployment
+or source-data change was made.
+
+**Review findings and fixes**
+- Redirects: `urllib` copies the `Authorization` header onto redirected
+  requests, so an API redirect could send the bearer token to another host,
+  and an allow-listed alert-area host could forward requests anywhere. Added
+  `api.open_without_redirects`, now the default opener for `PdcApiProvider`,
+  `maps.fetch_alert_areas`, `visuals.fetch_footprint` and
+  `scripts/profile_pdc_api.py`. A redirect is reported as an error and never
+  followed.
+- API cache: a completed partition is now written after deleting its old
+  manifest and page files, and a cache read loads only the pages its manifest
+  lists. Before, pages from an older, longer retrieval could be merged in.
+  The interfaces always refresh, so only cache-reading scripts were affected.
+- A connection dropped mid-response (`http.client.IncompleteRead`) escaped the
+  retry ladder and aborted the whole retrieval. It is now retried and, if it
+  persists, becomes an explicit failed window.
+- After a fatal error (for example HTTP 401), monthly requests still queued in
+  the thread pool kept running. They are now cancelled.
+- Download tab: the evidence bundle was cached by query only, so after the
+  measure or selected event changed it still offered the old files. It is now
+  keyed on query, measure and event, with a note when it must be prepared
+  again. The event-summary caption now states that view filters apply.
+- `analysis.py`: two pandas FutureWarnings (`fillna` downcasting) replaced with
+  explicit boolean comparisons; behaviour is unchanged.
+- Not changed: the Event detail tab loads the selected event's alert area even
+  when another tab is open. It is one cached, bounded request per selected
+  event, and lazy tabs would add a rerun to every tab click.
+- The default alert-area host is a development object store
+  (`monty-etl-2-minio.ifrc-go.dev.togglecorp.com`) read without signing. That
+  is what production PDC items advertise; it is recorded here as a dependency
+  risk, not changed.
+
+**Corrections to the earlier status summary**
+- Click-to-select could not be reproduced: in a headless browser (Streamlit
+  1.64, synthetic PHL data) a bar click selected the event, repeated clicks
+  worked, and the callback ran once per click. Map-dot clicks were not
+  testable offline because map tiles were blocked.
+- The notebook still offers the one-year annual overview; only the dashboard
+  lacks it. A PyDeck hex layer exists in `visuals.to_pydeck`, but no interface
+  uses it.
+
+**Validation (local, synthetic and fixture data only)**
+- `tests/test_review_fixes.py` adds 8 tests: a localhost redirect server
+  (refused; target never contacted, so credentials cannot reach it), API and
+  alert-area redirect handling, dropped connections, cancellation of queued
+  windows, stale cache pages, and completeness with one category under both
+  impact types. Seven of them fail on the pre-fix code; the eighth checks the
+  new default opener.
+- Full suite: 68 tests passed with pandas FutureWarnings treated as errors;
+  compilation, `uv lock --check` and the profiler import passed.
+- Headless Chromium against the real dashboard with retrieval replaced by six
+  synthetic PHL events: all seven tabs rendered without exceptions; a bar
+  click selected the event; the Download tab hid the old bundle after the
+  measure changed and restored it after preparing again.
+
+**Open**
+- Re-check map-dot click-to-select and run a fresh production query once a
+  session has network access to the Montandon host and a token. That run
+  also confirms that no endpoint used here answers with a redirect, which is
+  now reported as an HTTP 3xx error instead of being followed.
+- All-country overview and choropleth in the dashboard; tests for
+  `figures.py`, `maps.py` and the event-summary functions; notebook rebuild or
+  retirement; README update.
