@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "design-gallery",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "--no-sync", "python", "-m", "http.server", "8765", "--bind", "127.0.0.1", "--directory", "outputs/design-gallery"],
+      "port": 8765
+    },
+    {
+      "name": "dashboard",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "--no-sync", "--env-file", ".env", "streamlit", "run", "dashboard/streamlit_app.py", "--server.port", "8501", "--server.headless", "true", "--browser.gatherUsageStats", "false"],
+      "port": 8501
+    }
+  ]
+}
