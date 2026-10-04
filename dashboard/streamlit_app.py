@@ -164,7 +164,7 @@ def sidebar() -> tuple[tuple[QuerySpec, ...] | None, bool]:
     with st.sidebar:
         ui.sidebar_brand(APP_TITLE, "IFRC Montandon · PDC data")
         st.caption("Data source: Live Montandon API only (read-only). Nothing is retrieved until you press Retrieve.")
-        ui.step(1, "Where")
+        ui.sidebar_section("location", "Location")
         countries = st.multiselect(
             "Countries", COUNTRY_OPTIONS, default=["PHL"], format_func=country_label, key="countries",
             max_selections=MAX_COUNTRIES, placeholder="Choose up to 5 countries",
@@ -172,7 +172,7 @@ def sidebar() -> tuple[tuple[QuerySpec, ...] | None, bool]:
         )
         problems: list[str] = []
         start = end = None
-        ui.step(2, "When")
+        ui.sidebar_section("calendar", "Period")
         if not countries:
             problems.append("Choose at least one country.")
         else:
@@ -204,7 +204,7 @@ def sidebar() -> tuple[tuple[QuerySpec, ...] | None, bool]:
         )
         if not months:
             problems.append("Choose at least one month.")
-        ui.step(3, "What")
+        ui.sidebar_section("layers", "Data")
         hazards = st.pills("Hazards", [label for label, _ in HAZARD_GROUPS], selection_mode="multi", default=[], key="hazards")
         st.caption("No hazard selected = all hazards.")
         measures = st.pills(
@@ -238,7 +238,9 @@ def sidebar() -> tuple[tuple[QuerySpec, ...] | None, bool]:
 
 # ------------------------------------------------------------------ retrieval
 
-def run_retrieval(queries: tuple[QuerySpec, ...], previous: dict[str, QueryResult] | None = None) -> None:
+def run_retrieval(queries: tuple[QuerySpec, ...], previous: dict[str, QueryResult] | None = None) -> bool:
+    """Retrieve and store the group; True when every part completed."""
+
     order = {query.country_code: index for index, query in enumerate(queries)}
     started = time.perf_counter()
     with st.status("Retrieving from the Montandon API…", expanded=True) as status:
@@ -255,7 +257,7 @@ def run_retrieval(queries: tuple[QuerySpec, ...], previous: dict[str, QueryResul
         except Exception as error:  # UI boundary: keep the last good result.
             status.update(label="Retrieval failed", state="error", expanded=True)
             st.error(f"Retrieval failed: {type(error).__name__}: {public_text(str(error))}")
-            return
+            return False
         bar.progress(1.0, text="Preparing charts…")
         views = {key: _view(result) for key, result in results.items()}
         elapsed = time.perf_counter() - started
@@ -267,6 +269,7 @@ def run_retrieval(queries: tuple[QuerySpec, ...], previous: dict[str, QueryResul
     }
     st.session_state.pop("selected_event", None)
     st.session_state.pop("overlay", None)
+    return complete
 
 
 # ------------------------------------------------------------------ selection
@@ -354,9 +357,9 @@ def _event_lines(row: pd.Series, measures: list[str]) -> list[str]:
 def _event_chips(row: pd.Series) -> str:
     chips = ui.chip(row["hazard_group"], background=hazard_color(row["hazard_group"]), color="#FFFFFF") + ui.alert_chip(row["alert_level_max"])
     if row["multi_country"]:
-        chips += ui.chip(f"{row['n_countries']} countries", background="#EEF0F3", color="#4A5565")
+        chips += ui.chip(f"{row['n_countries']} countries", tone="neutral")
     if row["caveat"]:
-        chips += ui.chip("Caveat", background="#FFF4DB", color="#7A5200")
+        chips += ui.chip("Caveat", tone="caution")
     return f"<div style='margin:2px 0 6px 0'>{chips}</div>"
 
 
@@ -790,11 +793,11 @@ def render(state: dict[str, Any]) -> None:
     warnings = int((summary["alert_level_max"] == "WARNING").sum())
     snapshots = int(summary["snapshot_count"].sum())
     ui.kpis([
-        ("Events", f"{len(summary):,}", f"{snapshots:,} PDC updates · {query.period_label}"),
+        ("Events", f"{len(summary):,}", f"{snapshots:,} PDC updates · {query.period_label}", "calendar"),
         (f"Largest event · {noun}", compact(largest[f"{measure}_peak"]) if largest is not None else "–",
-         f"{F._short(largest['title'], 42)} · {F._date(largest['event_date'])}" if largest is not None else "No values"),
-        (f"Median per event · {noun}", compact(positive.median()) if not positive.empty else "–", f"{len(positive):,} of {len(summary):,} events with {noun} > 0"),
-        ("Reached PDC 'Warning'", f"{warnings:,}", f"{warnings / len(summary):.0%} of events" if len(summary) else "–"),
+         f"{F._short(largest['title'], 42)} · {F._date(largest['event_date'])}" if largest is not None else "No values", "people"),
+        (f"Median per event · {noun}", compact(positive.median()) if not positive.empty else "–", f"{len(positive):,} of {len(summary):,} events with {noun} > 0", "bars"),
+        ("Reached PDC 'Warning'", f"{warnings:,}", f"{warnings / len(summary):.0%} of events" if len(summary) else "–", "warning"),
     ])
 
     if summary.empty:
@@ -831,21 +834,23 @@ def render(state: dict[str, Any]) -> None:
 def main() -> None:
     st.set_page_config(page_title=APP_TITLE, page_icon="🌍", layout="wide", initial_sidebar_state="expanded")
     ui.inject_css()
-    state = st.session_state.get("pdc")
-    loaded = [f"{', '.join(country_name(query.country_code) for query in state['queries'])} · {state['queries'][0].period_label}"] if state else []
     ui.page_header(
         APP_TITLE,
         "Where and when disasters happened, and how many people, homes, schools and hospitals PDC estimated to be exposed. "
         "Values are PDC exposure estimates, not confirmed impacts.",
-        ["Live Montandon API", "Read-only", *loaded],
+        ["Live Montandon API", "Read-only"],
     )
     queries, clicked = sidebar()
     # Fixed slot for the retrieval status: without it the tabs below shift
     # position on the next rerun, and Streamlit resets them to the first tab.
-    status_slot = st.container()
+    # The progress box is cleared after a complete retrieval because the
+    # Complete banner repeats its outcome and timing; failures stay visible.
+    status_slot = st.empty()
     if clicked and queries:
         with status_slot:
-            run_retrieval(queries)
+            complete = run_retrieval(queries)
+        if complete:
+            status_slot.empty()
     state = st.session_state.get("pdc")
     if not state:
         ui.empty_state("Choose countries and years, then press Retrieve data", "The dashboard loads PDC events, hazard alerts and exposure values for up to 5 countries and 5 years.")
