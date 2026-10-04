@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "guard-pdc-explorer"
+version = "0.1.0"
+description = "Read-only Montandon PDC evidence explorer for GUARD preparation"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "pystac-client>=0.9,<1",
+  "pystac>=1.13,<2",
+  "pandas>=2.2,<3",
+  "plotly>=6,<7",
+  "manywidgets",
+  "ipywidgets>=8.1,<9",
+  "lonboard",
+  "pyarrow",
+  "folium>=0.19,<1",
+  "streamlit",
+  "openpyxl>=3.1,<4",
+  "jupyterlab>=4.3,<5",
+  "nbformat>=5.10,<6",
+  "nbclient>=0.10,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/guard_pdc"]
