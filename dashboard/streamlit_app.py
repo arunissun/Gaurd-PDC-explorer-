@@ -25,7 +25,10 @@ import components as ui  # noqa: E402
 
 from guard_pdc import figures as F  # noqa: E402
 from guard_pdc import maps as M  # noqa: E402
-from guard_pdc.analysis import age_profile, age_shares, build_analysis_frames, coverage_by_year, event_summary  # noqa: E402
+from guard_pdc import diagnostics as D  # noqa: E402
+from guard_pdc.analysis import (  # noqa: E402
+    age_profile, age_shares, build_analysis_frames, combined_country_events, country_event_counts, coverage_by_year, event_summary,
+)
 from guard_pdc.api import PdcApiProvider  # noqa: E402
 from guard_pdc.config import MontandonConfig  # noqa: E402
 from guard_pdc.countries import COUNTRY_NAMES, country_label, country_name  # noqa: E402
@@ -36,11 +39,16 @@ from guard_pdc.taxonomy import AGE_BAND_CATEGORIES, CAPITAL_UNIT_NOTE, DEFAULT_M
 from guard_pdc.theme import PLOTLY_CONFIG, compact, hazard_color  # noqa: E402
 
 APP_TITLE = "PDC Exposure Explorer"
+MAP_LAYERS = {"points": "Events", "clusters": "Clusters", "density": "Density"}
 MAX_COUNTRIES = 5
 SUMMARY_MEASURE_OPTIONS = ("people", "households", "schools", "hospitals", "capital")
 MEASURE_SHORT = {"people": "People", "households": "Households", "schools": "Schools", "hospitals": "Hospitals", "capital": "Capital"}
 PHASES = {"pdc-events": (0, "events"), "pdc-hazards": (1, "hazard alerts"), "pdc-impacts": (2, "exposure values")}
 COUNTRY_OPTIONS = tuple(sorted(COUNTRY_NAMES, key=lambda code: COUNTRY_NAMES[code]))
+COUNTRY_COUNT_NOTE = (
+    "An event that lists several of the selected countries is counted in each of them, so country counts overlap and "
+    "must not be added. Counts are distinct PDC events, never summed exposure."
+)
 BULLETIN_HELP = (
     "PDC tsunami bulletins are alerts for a whole warning region; their point is the warning-centre location "
     "and their exposure covers the full region. They are hidden by default."
@@ -354,15 +362,15 @@ def _event_chips(row: pd.Series) -> str:
 
 def tab_map(summary: pd.DataFrame, measure: str, show_bulletins: bool, selected: str | None, measures: list[str], country: str) -> None:
     controls = st.columns((2, 2, 4))
-    layer = controls[0].segmented_control("Layer", ["points", "density"], format_func={"points": "Events", "density": "Density"}.get, default="points", key="map-layer") or "points"
+    layer = controls[0].segmented_control("Layer", list(MAP_LAYERS), format_func=MAP_LAYERS.get, default="points", key="map-layer") or "points"
     show_all = controls[1].toggle("Fit all events", value=False, help="By default the view fits the central 90% of events so that a few distant alerts do not shrink the map.")
     left, right = st.columns((3, 1.15), gap="medium")
     with left:
         fig = M.fig_event_map(summary, measure, layer=layer, show_bulletins=show_bulletins, show_all=show_all, selected_family=selected)
-        _chart(fig, "map-events", selectable=layer == "points")
-        if layer == "points":
+        _chart(fig, "map-events", selectable=layer != "density")
+        if layer != "density":
             ui.size_legend(f"{F.MEASURE_LABELS[measure]} (peak)", M.size_legend_items(summary, measure, show_bulletins=show_bulletins))
-        ui.note(_map_caption(summary, show_bulletins, show_all))
+        ui.note(_map_caption(summary, show_bulletins, show_all) + (" " + M.CLUSTER_NOTE if layer == "clusters" else ""))
     with right:
         ui.section("Selected event", "Click a dot to select an event.")
         if selected is not None and selected in set(summary["family_key"]):
@@ -561,11 +569,42 @@ def tab_event_detail(summary: pd.DataFrame, frames: Any, query: QuerySpec, measu
         st.rerun()
 
 
+def _select_country_from_chart(key: str, keys: list[str]) -> None:
+    """A click on a selected country makes it the country shown in the other tabs."""
+
+    state = st.session_state.get(key)
+    try:
+        points = state["selection"]["points"]
+    except (KeyError, TypeError):
+        return
+    for point in points:
+        data = point.get("customdata")
+        code = data[0] if isinstance(data, (list, tuple)) and data else point.get("location")
+        if code in keys:
+            st.session_state["view-country"] = code
+            return
+
+
 def tab_compare(views: dict[str, dict[str, Any]], keys: list[str], query: QuerySpec, measure: str, show_bulletins: bool) -> None:
     summaries = {}
     for key in keys:
         summary = views[key]["summary"]
         summaries[key] = summary if show_bulletins else summary[~_is_bulletin(summary)]
+    combined = combined_country_events(summaries)
+    counts = country_event_counts(combined)
+    counts = counts[counts["country_code"].isin(keys)].reset_index(drop=True)
+    ui.section("Where are the selected countries' events?", "Distinct PDC events per selected country. Darker = more events. Click a country to show it in the other tabs.")
+    st.plotly_chart(M.fig_country_choropleth(counts, period=query.period_label, fit=True, height=380), theme=None, config=PLOTLY_CONFIG,
+                    key="compare-choropleth", on_select=lambda: _select_country_from_chart("compare-choropleth", keys), selection_mode="points")
+    ui.note(COUNTRY_COUNT_NOTE)
+    head, switch = st.columns((5, 2), vertical_alignment="bottom")
+    with head:
+        ui.section("All selected countries on one map", f"{len(combined):,} distinct events; an event shared by several selected countries appears once.")
+    with switch:
+        layer = st.segmented_control("Layer", list(MAP_LAYERS), format_func=MAP_LAYERS.get, default="clusters", key="compare-map-layer") or "clusters"
+    _chart(M.fig_event_map(combined, measure, layer=layer, show_bulletins=show_bulletins, show_all=True, uniform_size=9, zoom_offset=-0.6, height=520), "compare-events")
+    ui.note("Dots have one size here: PDC exposure values are per country, so a shared event has a different value in each. "
+            "Each country's Map tab shows sizes and values." + (" " + M.CLUSTER_NOTE if layer == "clusters" else ""))
     ui.section("Events per period in each country", "Distinct events, stacked by hazard, on a shared scale.")
     _chart(F.fig_compare_per_year(summaries, query.years), "compare-periods")
     left, right = st.columns(2, gap="large")
@@ -585,6 +624,8 @@ def tab_compare(views: dict[str, dict[str, Any]], keys: list[str], query: QueryS
             f"Median peak {MEASURE_SHORT[measure].lower()}": values[values > 0].median(),
             f"Largest peak {MEASURE_SHORT[measure].lower()}": values.max(),
             "Warning-level events": int((summary["alert_level_max"] == "WARNING").sum()),
+            "Also list other countries": int(summary["multi_country"].sum()),
+            "Main hazards": counts.set_index("country_code")["top_hazards"].get(key, "–"),
         })
     st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch",
                  column_config={column: st.column_config.NumberColumn(format="compact") for column in rows[0] if column.startswith(("Median", "Largest"))})
@@ -659,6 +700,48 @@ def tab_download(result: QueryResult, summary: pd.DataFrame, measure: str, selec
             columns[index % 3].download_button(name, data=data, file_name=name, key=f"download-{name}", width="stretch")
 
 
+def tab_advanced(results: dict[str, QueryResult], views: dict[str, dict[str, Any]], key: str, selected: str | None, summary: pd.DataFrame) -> None:
+    """Query JSON, request bodies, every retrieval window, and original STAC items (read-only)."""
+
+    result = results[key]
+    query = result.query
+    left, right = st.columns(2, gap="large")
+    with left:
+        ui.section("Query", "The validated query and its fingerprint. The same query always retrieves the same evidence.")
+        document = D.query_document(query)
+        st.json(document, expanded=1)
+        st.download_button("Download query (JSON)", D.json_text(document), file_name=f"pdc_query_{query.fingerprint[:12]}.json", mime="application/json", key=f"adv-query-{key}")
+    with right:
+        ui.section("Search request", "The POST /search body sent for the first month of each collection; other months differ only in their dates.")
+        st.json(D.example_search_bodies(query), expanded=1)
+        ui.note("Requests carry the bearer token in a header, which is never shown, stored or exported.")
+    ui.section("Retrieval windows", "One row per month window (or smaller part, after an adaptation) with its pages. The API does not report a total, so every continuation link is followed to the end.")
+    log = D.partition_log({key: result})
+    st.dataframe(log, hide_index=True, width="stretch", height=320,
+                 column_config={"complete": st.column_config.CheckboxColumn(), "from_cache": st.column_config.CheckboxColumn()})
+    st.download_button("Download retrieval log (CSV)", log.to_csv(index=False).encode("utf-8"), file_name=f"pdc_retrieval_log_{query.fingerprint[:12]}.csv", mime="text/csv", key=f"adv-log-{key}")
+    ui.section("Original PDC items", "The STAC items behind one event, exactly as the API returned them (long text is shortened for display).")
+    if summary.empty:
+        ui.note("No events in this view.")
+        return
+    keys = list(summary["family_key"])
+    default = keys.index(selected) if selected in keys else 0
+    titles = dict(zip(summary["family_key"], summary["title"], strict=False))
+    family_key = st.selectbox("Event", keys, index=default, format_func=lambda item: F._short(titles.get(item) or item, 80), key=f"adv-event-{key}")
+    ids = D.event_item_ids(views[key]["frames"], family_key)
+    items = D.raw_items(result, ids)
+    counts = ", ".join(f"{len(ids[name])} {name.replace('pdc-', '')}" for name in D.COLLECTIONS if ids.get(name))
+    ui.note(f"Retained snapshots for this event: {counts or 'none'}. At most {D.RAW_ITEM_LIMIT} items per collection are shown.")
+    available = [name for name in D.COLLECTIONS if items.get(name)]
+    if not available:
+        ui.note("The original items are not available for this event.")
+        return
+    collection = st.segmented_control("Collection", available, format_func=lambda name: name.replace("pdc-", "").title(), default=available[0], key=f"adv-collection-{key}") or available[0]
+    chosen = items[collection]
+    position = st.selectbox("Item", range(len(chosen)), format_func=lambda index: str(chosen[index].get("id")), key=f"adv-item-{key}-{collection}")
+    st.json(chosen[position], expanded=2)
+
+
 # ------------------------------------------------------------------ page
 
 def render(state: dict[str, Any]) -> None:
@@ -722,7 +805,7 @@ def render(state: dict[str, Any]) -> None:
         selected = str(summary.loc[values.idxmax(), "family_key"]) if values.notna().any() else str(summary["family_key"].iloc[0])
         st.session_state["selected_event"] = selected
 
-    names_tabs = ["Overview", "Map", "Events", "Exposure", "Event detail"] + (["Compare countries"] if len(keys) > 1 else []) + ["Data quality", "Download"]
+    names_tabs = ["Overview", "Map", "Events", "Exposure", "Event detail"] + (["Compare countries"] if len(keys) > 1 else []) + ["Data quality", "Advanced", "Download"]
     tabs = dict(zip(names_tabs, st.tabs(names_tabs), strict=True))
     with tabs["Overview"]:
         tab_overview(summary, query, measure)
@@ -739,6 +822,8 @@ def render(state: dict[str, Any]) -> None:
             tab_compare(views, keys, query, measure, show_bulletins)
     with tabs["Data quality"]:
         tab_quality(results, views, country, summary, measures)
+    with tabs["Advanced"]:
+        tab_advanced(results, views, country, st.session_state.get("selected_event"), summary)
     with tabs["Download"]:
         tab_download(results[country], summary, measure, st.session_state.get("selected_event"))
 

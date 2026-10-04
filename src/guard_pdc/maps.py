@@ -42,6 +42,12 @@ ALERT_AREA_NOTE = (
     "not a verified impact footprint."
 )
 MAP_STYLE = "carto-positron"
+# Cluster layer: nearby events merge into count badges up to this zoom level
+# (about a regional view); closer in, every event is drawn individually.
+CLUSTER_MAX_ZOOM = 6
+# Up to this many countries the choropleth uses a continuous scale with real counts.
+FEW_COUNTRIES = 8
+CLUSTER_NOTE = "Teal circles group nearby events; the number is how many distinct events they hold. Zoom in to see each event."
 GEOD = Geod(ellps="WGS84")
 # Largest alert-area file seen in production probes: 630 KB (57 cyclone
 # updates). The download cap is generous; drawing uses a simplified copy above
@@ -136,9 +142,23 @@ def fig_event_map(
     show_bulletins: bool = False,
     show_all: bool = False,
     selected_family: str | None = None,
+    uniform_size: float | None = None,
+    zoom_offset: float = 0.0,
     height: int = 640,
 ) -> go.Figure:
-    """One marker per event family; colour = hazard group, size = exposure class."""
+    """One marker per event family; colour = hazard group, size = log-scaled peak exposure.
+
+    ``uniform_size`` draws every marker at that diameter instead, for maps that
+    combine several countries: PDC exposure values are per queried country, so
+    one event can carry different values and none may be picked over another.
+    ``zoom_offset`` widens (negative) or narrows the fitted view, e.g. for a
+    half-width map whose edge clusters would otherwise be clipped.
+
+    ``layer`` is ``"points"`` (every event), ``"clusters"`` (nearby events grouped
+    into count badges until CLUSTER_MAX_ZOOM, then shown individually) or
+    ``"density"`` (heat layer). Clusters count distinct event families; they
+    never add exposure values.
+    """
 
     points = summary[summary["valid_point"]] if not summary.empty else summary
     if not show_bulletins and not points.empty:
@@ -147,6 +167,7 @@ def fig_event_map(
         return empty_figure("No events with a valid PDC point in this view.", height=260)
     lons, lats = points["longitude"].to_numpy(float), points["latitude"].to_numpy(float)
     center, zoom, _ = _event_view(points, show_all)
+    zoom = max(zoom + zoom_offset, 0.5)
     fig = go.Figure()
     if layer == "density":
         fig.add_trace(go.Densitymap(
@@ -159,17 +180,21 @@ def fig_event_map(
     values = pd.to_numeric(points[column], errors="coerce")
     # One trace, largest markers first, so small events are drawn on top and
     # never hidden under a large neighbour. Size is log-scaled exposure.
-    data = points.assign(_size=values.map(exposure_size), _value=values.fillna(-1)).sort_values(["_value"], ascending=False, kind="stable")
+    sizes = values.map(exposure_size) if uniform_size is None else pd.Series(float(uniform_size), index=values.index)
+    data = points.assign(_size=sizes, _value=values.fillna(-1)).sort_values(["_value"], ascending=False, kind="stable")
     colors = [
         with_alpha(hazard_color(group), 0.38 if regional else 0.9)
         for group, regional in zip(data["hazard_group"], data["multi_country"], strict=False)
     ]
-    # A white halo under every marker separates overlapping points without jitter.
-    fig.add_trace(go.Scattermap(lat=data["latitude"], lon=data["longitude"], mode="markers", marker=dict(size=data["_size"] + 2.5, color=SURFACE),
-                                hoverinfo="skip", showlegend=False))
+    clustered = layer == "clusters"
+    if not clustered:
+        # A white halo under every marker separates overlapping points without jitter.
+        fig.add_trace(go.Scattermap(lat=data["latitude"], lon=data["longitude"], mode="markers", marker=dict(size=data["_size"] + 2.5, color=SURFACE),
+                                    hoverinfo="skip", showlegend=False))
     fig.add_trace(go.Scattermap(
         lat=data["latitude"], lon=data["longitude"], mode="markers", marker=dict(size=data["_size"], color=colors),
         customdata=_hover_rows(data, measure), hovertemplate=EVENT_HOVER, showlegend=False, name="events",
+        cluster=dict(enabled=True, maxzoom=CLUSTER_MAX_ZOOM, color=with_alpha(PRIMARY, 0.82), size=[18, 26, 36], step=[10, 100]) if clustered else None,
     ))
     if selected_family is not None and selected_family in set(data["family_key"]):
         row = data[data["family_key"] == selected_family].iloc[0]
@@ -205,12 +230,37 @@ def size_legend_items(summary: pd.DataFrame, measure: str = "people", *, show_bu
     return [(compact(value), exposure_size(value)) for value in references]
 
 
-def fig_country_choropleth(counts: pd.DataFrame) -> go.Figure:
-    """Distinct PDC source-event families per country (never summed exposure)."""
+def nice_scale(maximum: float, ticks: int = 5) -> tuple[float, float]:
+    """Round upper bound and tick step for a 0-based colour bar (e.g. 358 -> 400, step 100)."""
+
+    if not maximum or maximum <= 0 or not math.isfinite(maximum):
+        return 1.0, 1.0
+    raw = maximum / (ticks - 1)
+    magnitude = 10 ** math.floor(math.log10(raw))
+    step = next(base * magnitude for base in (1, 2, 2.5, 5, 10) if base * magnitude >= raw)
+    step = max(step, 1.0)  # counts are whole numbers
+    return math.ceil(maximum / step) * step, step
+
+
+def fig_country_choropleth(counts: pd.DataFrame, *, period: str = "", fit: bool = False, height: int = 480) -> go.Figure:
+    """Distinct PDC event families per associated country (never summed exposure).
+
+    ``counts`` is ``analysis.country_event_counts``. Colours use quantile classes
+    so a few high-count countries do not flatten the map. ``fit`` zooms to the
+    countries shown (for a handful of selected countries). Clicking a country
+    selects it (customdata[0] is its ISO3 code).
+    """
 
     if counts.empty:
         return empty_figure("No country codes in the event evidence.", height=260)
     values = counts["event_families"].astype(float)
+    if len(counts) <= FEW_COUNTRIES:
+        # A handful of countries: quantile classes would be meaningless, so the
+        # colour runs continuously from zero and the bar shows real counts.
+        zmax, step = nice_scale(float(values.max()))
+        colorbar = dict(title=dict(text="Distinct events", font=dict(size=11)), thickness=12, len=0.75,
+                        tickmode="linear", tick0=0, dtick=step, tickformat=",d", ticks="outside", ticklen=4)
+        return _choropleth(counts, values, 0.0, zmax, sequential_scale(), colorbar, period=period, fit=fit, height=height)
     edges = np.unique(np.quantile(values, [0, 0.2, 0.4, 0.6, 0.8, 1.0]))
     bins = np.clip(np.searchsorted(edges, values, side="right") - 1, 0, max(len(edges) - 2, 0))
     steps = len(edges) - 1 or 1
@@ -219,15 +269,30 @@ def fig_country_choropleth(counts: pd.DataFrame) -> go.Figure:
     for index, color in enumerate(palette):
         scale.extend([[index / steps, color], [(index + 1) / steps, color]])
     labels = [f"{int(edges[index])}–{int(edges[index + 1])}" for index in range(steps)] if len(edges) > 1 else [str(int(values.iloc[0]))]
+    colorbar = dict(title=dict(text="Distinct events", font=dict(size=11)), tickvals=[index + 0.5 for index in range(steps)], ticktext=labels, thickness=12, len=0.6)
+    return _choropleth(counts, bins + 0.5, 0, steps, scale, colorbar, period=period, fit=fit, height=height)
+
+
+def _choropleth(counts: pd.DataFrame, z: Any, zmin: float, zmax: float, scale: Any, colorbar: dict, *, period: str, fit: bool, height: int) -> go.Figure:
+    empty = pd.Series([""] * len(counts), index=counts.index)
+    customdata = np.column_stack([
+        counts["country_code"], counts["country_code"].map(country_name), counts["event_families"],
+        counts.get("event_snapshots", empty), counts.get("multi_country_events", empty), counts.get("top_hazards", empty),
+    ])
+    suffix = f" · {period}" if period else ""
     fig = go.Figure(go.Choropleth(
-        locations=counts["country_code"], z=bins + 0.5, zmin=0, zmax=steps, locationmode="ISO-3", colorscale=scale,
-        marker_line_color=SURFACE, marker_line_width=0.5,
-        customdata=np.column_stack([counts["event_families"], counts.get("hazards", pd.Series([""] * len(counts))), counts["country_code"].map(country_name)]),
-        hovertemplate="%{customdata[2]}: %{customdata[0]} distinct event families<br>%{customdata[1]}<extra></extra>",
-        colorbar=dict(title=dict(text="Event families", font=dict(size=11)), tickvals=[index + 0.5 for index in range(steps)], ticktext=labels, thickness=12, len=0.6),
+        locations=counts["country_code"], z=z, zmin=zmin, zmax=zmax, locationmode="ISO-3", colorscale=scale,
+        marker_line_color=SURFACE, marker_line_width=0.5, customdata=customdata,
+        hovertemplate=(
+            "<b>%{customdata[1]}</b>" + suffix + "<br>%{customdata[2]} distinct events · %{customdata[3]} PDC updates"
+            "<br>%{customdata[4]} also list other countries<br>%{customdata[5]}<extra></extra>"
+        ),
+        colorbar=colorbar,
     ))
-    fig.update_geos(projection_type="natural earth", showframe=False, showcoastlines=False, landcolor="#EEF0F3", showland=True, bgcolor="rgba(0,0,0,0)")
-    return apply_plotly_theme(fig, height=460)
+    fig.update_geos(projection_type="natural earth", showframe=False, showcoastlines=False, landcolor="#EEF0F3", showland=True,
+                    showcountries=True, countrycolor=SURFACE, bgcolor="rgba(0,0,0,0)", fitbounds="locations" if fit else False)
+    fig.update_layout(clickmode="event+select", margin=dict(l=0, r=0, t=0, b=0))
+    return apply_plotly_theme(fig, height=height)
 
 
 # ------------------------------------------------------------------ alert areas

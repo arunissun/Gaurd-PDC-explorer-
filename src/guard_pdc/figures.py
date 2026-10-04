@@ -159,6 +159,24 @@ def fig_events_by_period(summary: pd.DataFrame, years: tuple[int, ...]) -> go.Fi
 
 
 MIN_BOX_EVENTS = 5
+# Category tick labels are wrapped to this many characters per line so that
+# neighbouring hazard names do not run into each other on narrow screens.
+LABEL_LINE_CHARS = 12
+
+
+def wrap_label(text: str, width: int = LABEL_LINE_CHARS) -> str:
+    """Break a label into <br>-separated lines of at most ``width`` characters.
+
+    Words are never split; a single word longer than ``width`` keeps its own line.
+    """
+
+    lines: list[str] = []
+    for word in str(text).split():
+        if lines and len(lines[-1]) + 1 + len(word) <= width:
+            lines[-1] = f"{lines[-1]} {word}"
+        else:
+            lines.append(word)
+    return "<br>".join(lines)
 
 
 def fig_hazard_profile(summary: pd.DataFrame, measure: str = "people", *, height: int = 420) -> go.Figure:
@@ -183,9 +201,8 @@ def fig_hazard_profile(summary: pd.DataFrame, measure: str = "people", *, height
     labels = {}
     for group in medians.index:
         count, total = int((data["hazard_group"] == group).sum()), int(totals.get(group, 0))
-        detail = f"{count} events" if count == total else f"{count} of {total} events"
-        name = group.replace(" & ", " &<br>")
-        labels[group] = f"{name}<br><span style='font-size:11px;color:{INK_SECONDARY}'>{detail}</span>"
+        detail = f"{count} events" if count == total else f"{count} of {total}<br>events"
+        labels[group] = f"{wrap_label(group)}<br><span style='font-size:10.5px;color:{INK_SECONDARY}'>{detail}</span>"
     fig = go.Figure()
     for group in medians.index:
         values = data.loc[data["hazard_group"] == group, "_log"]
@@ -219,7 +236,7 @@ def fig_hazard_profile(summary: pd.DataFrame, measure: str = "people", *, height
         range=[low - 0.25, high + 0.25], title=MEASURE_LABELS[measure] + " per event (peak, log scale)",
     )
     fig.update_xaxes(type="category", categoryorder="array", categoryarray=[labels[group] for group in medians.index], showgrid=False, title=None,
-                     tickfont=dict(size=11.5, color=INK), tickangle=0)
+                     tickfont=dict(size=10.5, color=INK), tickangle=0, automargin=True)
     fig.update_layout(boxgap=0.3)
     return apply_plotly_theme(fig, height=height)
 

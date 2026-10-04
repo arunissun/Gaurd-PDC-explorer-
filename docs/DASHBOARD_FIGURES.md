@@ -15,15 +15,20 @@ hospitals or capital).
 2. **Seasonality calendar** (`fig_seasonality`): a year × month heatmap of distinct events per
    cell. Darker cells mean more events, and months that weren't requested are left blank.
 3. **Hazard profile** (`fig_hazard_profile`): one log-scale box plot per hazard showing peak
-   exposure per event (middle half, median, smallest to largest), ordered by median.
+   exposure per event (middle half, median, smallest to largest), ordered by median. Hazards
+   with fewer than 5 events show a range line and median only. Hazard names are wrapped at
+   word boundaries (`wrap_label`, at most 12 characters per line) so neighbouring labels do not
+   overlap on narrow screens.
 
 ## Map
 
 4. **Event map** (`fig_event_map`): one dot per event at the PDC event point. Colour is the
    hazard, size grows by a fixed step per tenfold increase in peak exposure (log scale), and
    multi-country alerts are faded. The size key under the map is drawn in HTML at the exact dot
-   diameters (`size_legend_items`), because Plotly caps legend symbols at 16 px. The **Density**
-   layer swaps the dots for a heat layer. Clicking a dot selects the event.
+   diameters (`size_legend_items`), because Plotly caps legend symbols at 16 px. The **Clusters**
+   layer groups nearby events into teal count badges (distinct events, never summed exposure)
+   up to zoom 6, then shows each event. The **Density** layer swaps the dots for a heat layer.
+   Clicking a dot selects the event.
 5. **Alert-area overlay** (`fig_alert_area_overlay`, on demand): the latest PDC alert areas of
    the N largest events of one hazard, drawn translucent so overlaps darken. It appears only
    after you press "Show alert areas".
@@ -55,28 +60,47 @@ hospitals or capital).
 
 ## Compare countries (only when 2 or more countries are loaded)
 
-13. **Events per period by country** (`fig_compare_per_year`): one panel per country of
+13. **Countries map** (`fig_country_choropleth`): the selected countries coloured by distinct
+    PDC events (continuous scale from zero with round ticks; quantile classes are used only
+    for more than 8 countries). Hover shows events, PDC updates, events that also list other
+    countries, and the main hazards. Clicking a country makes it the country shown in the other
+    tabs. Counts overlap for events shared by several countries and are never added.
+14. **All selected countries on one map** (`fig_event_map` with `uniform_size`): every event of
+    the selected countries once (`combined_country_events`), on the Clusters layer by default.
+    Dots have one size and no exposure values, because PDC values are per country and a shared
+    event has a different value in each.
+15. **Events per period by country** (`fig_compare_per_year`): one panel per country of
     distinct events per year (per month when one year is loaded), stacked by hazard, on a
     shared y-axis.
-14. **Hazard mix** (`fig_compare_hazard_mix`): a country × hazard heatmap of distinct events.
+16. **Hazard mix** (`fig_compare_hazard_mix`): a country × hazard heatmap of distinct events.
     Hover shows the median peak value.
-15. **Exceedance by country** (`fig_exceedance` with `by="country"`): the curve from figure 9,
+17. **Exceedance by country** (`fig_exceedance` with `by="country"`): the curve from figure 9,
     with one line per country instead of per hazard.
 
 ## Data quality
 
-16. **Coverage per year** (`fig_coverage`): grouped bars of PDC event updates and distinct
+18. **Coverage per year** (`fig_coverage`): grouped bars of PDC event updates and distinct
     events retrieved per year, which separates changes in Montandon coverage from hazard
     trends.
 
+## Advanced
+
+No charts. Read-only diagnostics from `src/guard_pdc/diagnostics.py`: the validated query JSON
+and fingerprint, the `POST /search` body for the first month of each collection, one row per
+retrieval window with pages, items, cache use and adaptations, and the original STAC items of
+one event (strings redacted with `public_text`, long strings shortened, at most 25 items per
+collection). The bearer token is never part of these structures.
+
 ## Download
 
-There are no figures on this tab, only CSV and evidence-bundle downloads.
+No figures on the page, only CSV and evidence-bundle downloads. The bundle's `report.md` and
+`report.html` include SVG charts from `src/guard_pdc/report_charts.py`: events per month,
+events by hazard, and the 10 largest events by the selected measure.
 
 ## Not shown on any dashboard page
 
-- `fig_events_by_period` (figures.py) and `fig_country_choropleth` (maps.py) are built and
-  importable, but no dashboard tab calls them. The choropleth is intended for the planned
-  all-country annual overview.
+- `fig_events_by_period` (figures.py) is built and importable, but no dashboard tab calls it.
+- There is no all-country (worldwide) view: retrieving every country for a year is too slow
+  from the API (decision of 2026-10-05).
 - The notebook uses the older figure set in `src/guard_pdc/visuals.py` (Figures 1–14 of the
   original plan, e.g. event completeness and category availability), not the figures above.
