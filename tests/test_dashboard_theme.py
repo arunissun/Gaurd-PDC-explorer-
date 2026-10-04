@@ -43,9 +43,11 @@ class InterfaceThemeTests(unittest.TestCase):
         # Shared plotting settings are not interface tokens.
         self.assertEqual((plot_theme.SURFACE, plot_theme.PRIMARY, plot_theme.INK), ("#FFFFFF", "#0B7A80", "#1B2533"))
         self.assertEqual(plot_theme.SEQUENTIAL[0], "#FFF5E1")
-        # Streamlit writes its theme font into Plotly text, so it must stay the original.
+        # Streamlit writes its theme font and text colour into Plotly layout.font,
+        # so both must stay the original values.
         config = tomllib.loads((ROOT / ".streamlit" / "config.toml").read_text(encoding="utf-8"))
         self.assertEqual(config["theme"]["font"], "sans-serif")
+        self.assertEqual(config["theme"]["textColor"], plot_theme.INK)
         self.assertNotIn("dark", config["theme"])
 
     def test_switching_theme_keeps_state_and_never_retrieves(self) -> None:

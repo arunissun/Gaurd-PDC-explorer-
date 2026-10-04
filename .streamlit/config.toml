@@ -5,11 +5,12 @@ base = "light"
 primaryColor = "#A45A45"
 backgroundColor = "#F5F2ED"
 secondaryBackgroundColor = "#FFFEFB"
-textColor = "#2D2A28"
+# Keep textColor and font at their original values: Streamlit writes both into
+# every Plotly figure's layout.font, so changing them would change every figure.
+# The interface ink colour and font are set by CSS in components.py.
+textColor = "#1B2533"
 borderColor = "#E2DDD6"
 baseRadius = "0.625rem"
-# Keep "sans-serif": Streamlit also writes this font into Plotly text, so changing
-# it would change every figure. The interface font is set in components.py.
 font = "sans-serif"
 
 [server]
