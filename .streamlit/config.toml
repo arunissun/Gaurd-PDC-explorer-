@@ -1,11 +1,16 @@
 [theme]
+# Light interface base (warm neutral). The dark interface theme is applied per
+# browser session by dashboard/components.py; figures set their own colours.
 base = "light"
-primaryColor = "#0B7A80"
-backgroundColor = "#F5F6F8"
-secondaryBackgroundColor = "#FFFFFF"
+primaryColor = "#A45A45"
+backgroundColor = "#F5F2ED"
+secondaryBackgroundColor = "#FFFEFB"
+# Keep textColor and font at their original values: Streamlit writes both into
+# every Plotly figure's layout.font, so changing them would change every figure.
+# The interface ink colour and font are set by CSS in components.py.
 textColor = "#1B2533"
-borderColor = "#E2E5EA"
-baseRadius = "0.85rem"
+borderColor = "#E2DDD6"
+baseRadius = "0.625rem"
 font = "sans-serif"
 
 [server]
