@@ -243,7 +243,8 @@ def _category_status_frame(result: QueryResult, families: pd.DataFrame, impacts:
     retrieved = set(result.query.categories) if result.query.retrieves_impact_detail else set()
     is_retrieved = merged["impact_category"].isin(retrieved)
     has_value = merged["_conflict"].notna()
-    conflict = merged["_conflict"].fillna(False).astype(bool)
+    # True only where a selected observation is flagged; rows without one are not conflicts.
+    conflict = merged["_conflict"].eq(True)
     numeric = pd.to_numeric(merged["numeric_value"], errors="coerce")
     merged["status"] = np.select(
         [~is_retrieved, ~has_value, conflict, numeric.isna(), numeric.eq(0)],
@@ -752,7 +753,7 @@ def event_summary(frames: AnalysisFrames) -> pd.DataFrame:
         category = MEASURE_CATEGORY[measure]
         values = stats.get(category, pd.DataFrame(columns=["rows", "conflict", "peak", "peak_time", "latest", "latest_time", "changes"]))
         mapped = values.reindex(summary["family_key"])
-        conflict = mapped["conflict"].fillna(False).astype(bool).to_numpy()
+        conflict = mapped["conflict"].eq(True).to_numpy()
         peak = pd.to_numeric(mapped["peak"], errors="coerce").to_numpy()
         summary[f"{measure}_peak"] = np.where(conflict, np.nan, peak)
         summary[f"{measure}_peak_time"] = pd.to_datetime(mapped["peak_time"].to_numpy(), errors="coerce", utc=True, format="mixed")
