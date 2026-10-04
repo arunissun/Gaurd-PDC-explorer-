@@ -1,0 +1,38 @@
+{
+  "type": "Feature",
+  "stac_version": "1.0.0",
+  "id": "pdc-event-fixture-001",
+  "collection": "pdc-events",
+  "geometry": {
+    "type": "Point",
+    "coordinates": [120.9842, 14.5995]
+  },
+  "bbox": [120.9842, 14.5995, 120.9842, 14.5995],
+  "properties": {
+    "datetime": "2024-01-15T00:00:00Z",
+    "start_datetime": "2024-01-15T00:00:00Z",
+    "end_datetime": "2024-01-17T00:00:00Z",
+    "title": "Fixture flood",
+    "roles": ["source", "event"],
+    "monty:src_event_id": "pdc-source-fixture-001",
+    "monty:corr_id": "20240115-PHL-fixture-MH0600-1-GCDB",
+    "monty:episode_number": 1,
+    "monty:country_codes": ["PHL"],
+    "monty:hazard_codes": ["MH0600", "nat-hyd-flo-flo", "FL"],
+    "processing:version": "fixture"
+  },
+  "links": [
+    {
+      "rel": "related",
+      "href": "../pdc-hazards/pdc-hazard-fixture-001.json",
+      "collection": "pdc-hazards",
+      "type": "application/geo+json"
+    },
+    {
+      "rel": "related",
+      "href": "../pdc-impacts/pdc-impact-fixture-people-PHL.json",
+      "collection": "pdc-impacts",
+      "type": "application/geo+json"
+    }
+  ]
+}
