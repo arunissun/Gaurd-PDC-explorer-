@@ -4,18 +4,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from hashlib import sha256
+import http.client
 import json
 import math
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from .api import open_without_redirects
 from .analysis import AnalysisFrames, TEMPORAL_NOTE, temporal_history, temporal_summary
 from .models import EventSnapshotRow
 from .taxonomy import AGE_BAND_CATEGORIES, CATEGORY_ORDER, category_label
@@ -777,7 +779,7 @@ def fetch_footprint(
             payload = cache_path.read_bytes()
         else:
             request = Request(str(href), headers={"Accept": "application/geo+json, application/json", "User-Agent": "guard-pdc-explorer/0.1"})
-            with urlopen(request, timeout=30) as response:  # noqa: S310 - URL is validated HTTPS source evidence.
+            with open_without_redirects(request, timeout=30) as response:
                 length = response.headers.get("Content-Length")
                 if length and int(length) > max_bytes:
                     return FootprintResult("oversized", f"Footprint exceeds {max_bytes} bytes.", asset_key=key, host=parsed.hostname)
@@ -786,9 +788,11 @@ def fetch_footprint(
                 return FootprintResult("oversized", f"Footprint exceeds {max_bytes} bytes.", asset_key=key, host=parsed.hostname)
         value = json.loads(payload)
     except HTTPError as error:
+        if 300 <= error.code < 400:
+            return FootprintResult("not_allowed", f"Footprint host answered with a redirect (HTTP {error.code}); redirects are not followed.", asset_key=key, host=parsed.hostname)
         status = "inaccessible" if error.code in {401, 403} else "failed"
         return FootprintResult(status, f"Footprint request returned HTTP {error.code}.", asset_key=key, host=parsed.hostname)
-    except (URLError, OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+    except (URLError, OSError, http.client.HTTPException, UnicodeDecodeError, json.JSONDecodeError) as error:
         return FootprintResult("failed", f"Footprint could not be read: {type(error).__name__}.", asset_key=key, host=parsed.hostname)
     result = validate_footprint_geojson(value, max_features=max_features)
     if result.status == "available" and not cache_path.exists():

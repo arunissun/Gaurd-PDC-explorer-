@@ -12,7 +12,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
-from urllib.request import Request, urlopen
+from urllib.request import Request
+
+from guard_pdc.api import open_without_redirects
 
 
 DEFAULT_ENDPOINT = "https://montandon-eoapi.ifrc.org/stac"
@@ -112,7 +114,7 @@ def request_json(
     for attempt in range(4):
         try:
             request = Request(url, data=payload, headers=headers, method=method)
-            with urlopen(request, timeout=timeout) as response:
+            with open_without_redirects(request, timeout=timeout) as response:
                 data = json.load(response)
             if not isinstance(data, dict):
                 raise ProbeError(f"{method} {urlparse(url).path} returned a non-object JSON value")
@@ -164,7 +166,7 @@ def request_asset(url: str, token: str, *, api_host: str, max_bytes: int, timeou
         method="GET",
     )
     try:
-        with urlopen(request, timeout=timeout) as response:
+        with open_without_redirects(request, timeout=timeout) as response:
             result["status"] = response.status
             result["content_type"] = response.headers.get("Content-Type")
             content = response.read(max_bytes + 1)

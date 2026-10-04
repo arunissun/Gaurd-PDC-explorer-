@@ -14,18 +14,20 @@ Map rules (docs/VISUAL_SPEC.md):
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import http.client
 import json
 import math
 from typing import Any, Callable, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from pyproj import Geod
 
+from .api import open_without_redirects
 from .countries import country_name
 from .figures import EVENT_HOVER, MEASURE_LABELS, _date, _hover_rows, _short
 from .taxonomy import HAZARD_GROUP_ORDER
@@ -371,13 +373,14 @@ def fetch_alert_areas(
     *,
     allowed_hosts: tuple[str, ...],
     point: tuple[float, float] | None = None,
-    opener: Callable[..., Any] = urlopen,
+    opener: Callable[..., Any] = open_without_redirects,
     max_bytes: int = MAX_FOOTPRINT_BYTES,
 ) -> AlertAreas:
     """Fetch one event's PDC 'Maps' asset from its unsigned object URL.
 
-    No credentials are sent, only allow-listed HTTPS hosts are contacted, the
-    response is size-capped, and nothing is written to disk.
+    No credentials are sent, only allow-listed HTTPS hosts are contacted,
+    redirects are refused (so an allowed host cannot forward the request
+    elsewhere), the response is size-capped, and nothing is written to disk.
     """
 
     if not url:
@@ -390,9 +393,11 @@ def fetch_alert_areas(
         with opener(request, timeout=45) as response:
             payload = response.read(max_bytes + 1)
     except HTTPError as error:
+        if 300 <= error.code < 400:
+            return AlertAreas("not_allowed", f"The alert-area host answered with a redirect (HTTP {error.code}); redirects are not followed.", parsed.hostname)
         status = "inaccessible" if error.code in {401, 403} else "failed"
         return AlertAreas(status, f"The alert-area request returned HTTP {error.code}.", parsed.hostname)
-    except (TimeoutError, URLError, OSError) as error:
+    except (TimeoutError, URLError, OSError, http.client.HTTPException) as error:
         return AlertAreas("failed", f"The alert-area request failed ({type(error).__name__}).", parsed.hostname)
     if len(payload) > max_bytes:
         return AlertAreas("oversized", f"The alert-area file exceeds {max_bytes // 1_000_000} MB.", parsed.hostname)

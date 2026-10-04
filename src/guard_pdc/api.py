@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
+import http.client
 import json
 from pathlib import Path
 import threading
@@ -14,7 +15,7 @@ import time
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, quote, urljoin, urlparse, urlencode, urlunparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from .config import MontandonConfig
 from .models import QuerySpec, RetrievalMetadata, ValidationError
@@ -56,6 +57,24 @@ DEFAULT_FIELDS = (
     "properties.monty:impact_detail",
     "properties.processing:version",
 )
+
+
+class _RefuseRedirects(HTTPRedirectHandler):
+    """Surface every redirect as an HTTPError instead of following it.
+
+    urllib copies request headers, including ``Authorization``, onto the
+    redirected request, so following a redirect could send the bearer token
+    to another host. Allow-listed asset hosts must not forward requests either.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ARG002 - urllib signature
+        return None
+
+
+def open_without_redirects(request: Request, timeout: float | None = None):
+    """``urlopen`` equivalent that never follows redirects (3xx raises HTTPError)."""
+
+    return build_opener(_RefuseRedirects).open(request, timeout=timeout)
 
 
 class ApiError(RuntimeError):
@@ -398,7 +417,7 @@ class PdcApiProvider:
         *,
         partition_cap: int = 25_000,
         max_pages: int | None = None,
-        opener: Callable[..., object] = urlopen,
+        opener: Callable[..., object] = open_without_redirects,
         sleeper: Callable[[float], None] = time.sleep,
         max_workers: int | None = None,
         failure_budget: int = DEFAULT_FAILURE_BUDGET,
@@ -472,7 +491,8 @@ class PdcApiProvider:
                     path=_safe_path(url),
                     recoverable=error.code in TRANSIENT_HTTP or error.code in ADAPTABLE_HTTP,
                 ) from None
-            except (TimeoutError, URLError, OSError) as error:
+            except (TimeoutError, URLError, OSError, http.client.HTTPException) as error:
+                # HTTPException covers a connection dropped mid-body (IncompleteRead).
                 if attempt < 3:
                     self._sleeper(2**attempt)
                     continue
@@ -706,8 +726,13 @@ class PdcApiProvider:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         if not manifest.get("complete"):
             return None
-        page_paths = sorted(cache_dir.glob("page_*.json"))
-        if not page_paths:
+        # Read exactly the pages this manifest describes; a page file without
+        # a manifest entry is never evidence of this retrieval.
+        saved_pages = manifest.get("pages")
+        if not isinstance(saved_pages, list) or not saved_pages:
+            return None
+        page_paths = [cache_dir / f"page_{number:03d}.json" for number in range(1, len(saved_pages) + 1)]
+        if not all(path.exists() for path in page_paths):
             return None
         documents = [json.loads(path.read_text(encoding="utf-8")) for path in page_paths]
         return self._partition_from_documents(
@@ -759,6 +784,11 @@ class PdcApiProvider:
         retrieved_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         if complete:
             cache_dir = self._cache_dir(cache_key)
+            # Invalidate first, then drop pages of an older, longer retrieval so
+            # they can never be merged into this one.
+            (cache_dir / "manifest.json").unlink(missing_ok=True)
+            for stale in cache_dir.glob("page_*.json"):
+                stale.unlink()
             for page_number, document in enumerate(documents, start=1):
                 _write_json(cache_dir / f"page_{page_number:03d}.json", document)
             _write_json(
@@ -1026,10 +1056,16 @@ class PdcApiProvider:
         else:
             with ThreadPoolExecutor(max_workers=min(self.max_workers, len(pending)), thread_name_prefix="pdc-api") as pool:
                 futures = {pool.submit(fetch, key): key for key in pending}
-                for future in as_completed(futures):
-                    key = futures[future]
-                    window_results[key] = future.result()
-                    report(key, window_results[key])
+                try:
+                    for future in as_completed(futures):
+                        key = futures[future]
+                        window_results[key] = future.result()
+                        report(key, window_results[key])
+                except BaseException:
+                    # A fatal error (for example authentication) ends the
+                    # retrieval: do not send the windows still queued.
+                    pool.shutdown(wait=False, cancel_futures=True)
+                    raise
 
         # Deterministic merge order regardless of completion order.
         partitions: list[PartitionResult] = [
@@ -1086,7 +1122,11 @@ class PdcApiProvider:
         if self.max_workers == 1 or len(selected) <= 1:
             return dict(has_events(year) for year in selected)
         with ThreadPoolExecutor(max_workers=self.max_workers, thread_name_prefix="pdc-years") as pool:
-            return dict(pool.map(has_events, selected))
+            try:
+                return dict(pool.map(has_events, selected))
+            except BaseException:
+                pool.shutdown(wait=False, cancel_futures=True)
+                raise
 
     def query_events(self, query: QuerySpec, **options: Any) -> ApiQueryResult:
         return self.query_collection(query, "pdc-events", **options)
