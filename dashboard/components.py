@@ -131,7 +131,19 @@ section[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] {{ gap:0.7re
    clear gap and a fine divider. */
 .st-key-pdc-header [data-testid="stColumn"]:last-child > [data-testid="stVerticalBlock"] {{
   flex-direction:row; flex-wrap:wrap; justify-content:flex-end; align-items:center; gap:10px 0; padding-top:6px; }}
+/* The badge column takes the width it needs so the switch stays on the badges'
+   line. When the title would get narrower than 340px, the whole badge row moves
+   under it instead of squeezing it. */
+@media (min-width: 640px) {{
+  .st-key-pdc-header [data-testid="stHorizontalBlock"] {{ flex-wrap:wrap; }}
+  .st-key-pdc-header [data-testid="stColumn"]:first-child {{ flex:1 1 340px !important; min-width:0; }}
+  .st-key-pdc-header [data-testid="stColumn"]:last-child {{ flex:0 0 auto !important; width:auto !important; }}
+  .st-key-pdc-header [data-testid="stColumn"]:last-child > [data-testid="stVerticalBlock"] {{ flex-wrap:nowrap; }}
+}}
 .st-key-pdc-header [data-testid="stColumn"]:last-child [data-testid="stElementContainer"] {{ width:auto !important; flex:0 0 auto; }}
+/* Streamlit pulls markdown up by -1rem; without this the badge box is shorter
+   than the badges and the switch centres above them. */
+.st-key-pdc-header [data-testid="stColumn"]:last-child [data-testid="stMarkdownContainer"] {{ margin-bottom:0; }}
 .pdc-head h1 {{ font-size:1.75rem; font-weight:700; margin:0; padding:0; color:var(--ui-ink); letter-spacing:-0.015em; line-height:1.2; font-family:var(--ui-font); }}
 .pdc-head p {{ margin:6px 0 0 0; color:var(--ui-ink2); font-size:0.9rem; max-width:780px; line-height:1.45; }}
 .pdc-badges {{ display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }}
@@ -176,7 +188,8 @@ p.pdc-note {{ color:var(--ui-ink2); font-size:0.82rem; line-height:1.45; margin:
 .pdc-sizes .h {{ color:var(--ui-ink2); font-size:0.8rem; font-weight:600; align-self:center; margin-right:2px; }}
 .pdc-sizes .i {{ display:flex; flex-direction:column; align-items:center; gap:3px; color:var(--ui-ink2); font-size:0.76rem; }}
 .pdc-sizes .c {{ border-radius:50%; background:rgba(128,122,115,0.18); border:1.5px solid var(--ui-ink2); box-sizing:border-box; }}
-.pdc-empty {{ text-align:center; color:var(--ui-ink2); padding:48px 16px; border:1px dashed var(--ui-border); border-radius:12px; background:var(--ui-card); }}
+/* margin-bottom offsets Streamlit's -1rem markdown margin so the next element keeps its gap. */
+.pdc-empty {{ text-align:center; color:var(--ui-ink2); padding:48px 16px; border:1px dashed var(--ui-border); border-radius:12px; background:var(--ui-card); margin-bottom:1rem; }}
 .pdc-empty h3 {{ color:var(--ui-ink); font-size:1.1rem; margin-bottom:6px; font-family:var(--ui-font); }}
 
 /* Navigation */
