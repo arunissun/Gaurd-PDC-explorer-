@@ -14,12 +14,16 @@ from urllib.error import HTTPError
 from urllib.request import Request
 import warnings
 
-from guard_pdc.analysis import build_analysis_frames
+import pandas as pd
+
+from guard_pdc.analysis import build_analysis_frames, event_summary
 from guard_pdc.api import ApiError, PdcApiProvider, open_without_redirects
 from guard_pdc.config import MontandonConfig
-from guard_pdc.maps import fetch_alert_areas
+from guard_pdc.maps import fetch_alert_areas, fig_event_map, size_legend_items
 from guard_pdc.models import QuerySpec
 from guard_pdc.service import PdcEvidenceService
+from guard_pdc.taxonomy import HAZARD_GROUP_ORDER
+from guard_pdc.theme import exposure_size
 from guard_pdc.visuals import _completeness_data
 from tests.test_query_and_api import SequenceOpener
 from tests.test_retrieval_resilience import ScriptedOpener, http_error, page, provider, query
@@ -167,6 +171,36 @@ class CompletenessTests(unittest.TestCase):
         totals = _completeness_data(frames).groupby("family_key")["percent"].sum()
         self.assertFalse(totals.empty)
         self.assertTrue((totals.round(6) == 100).all(), totals.to_dict())
+
+
+class MapSizeLegendTests(unittest.TestCase):
+    def test_size_legend_uses_the_map_diameters_and_grows_every_decade(self) -> None:
+        # Plotly draws legend symbols at most 16 px, so 1M-100M looked identical there.
+        summary = pd.DataFrame({
+            "valid_point": [True, True, True],
+            "caveat": [None, None, "Tsunami bulletin: no exposure"],
+            "people_peak": [2_000.0, 150_000_000.0, 9e9],
+        })
+        items = size_legend_items(summary, "people")
+        self.assertEqual([label for label, _ in items], ["1k", "10k", "100k", "1M", "10M", "100M"])
+        diameters = [diameter for _, diameter in items]
+        self.assertEqual(diameters, [exposure_size(value) for value in (1e3, 1e4, 1e5, 1e6, 1e7, 1e8)])
+        self.assertTrue(all(later > earlier for earlier, later in zip(diameters, diameters[1:])))
+        self.assertTrue(any(diameter > 16 for diameter in diameters))
+        self.assertEqual(size_legend_items(summary.assign(people_peak=[0.0, None, 5.0]), "people"), [])
+
+    def test_event_map_legend_lists_hazards_only(self) -> None:
+        spec = QuerySpec(analysis_mode="country_detail", country_code="PHL", year=2024, months=(1,), source_mode="api_only")
+        fake = FakeApiProvider({
+            "pdc-events": api_result("pdc-events", [fixture_json("pdc_event.json")], spec),
+            "pdc-hazards": api_result("pdc-hazards", [fixture_json("pdc_hazard.json")], spec),
+            "pdc-impacts": api_result("pdc-impacts", fixture_jsonl("pdc_impacts.jsonl"), spec),
+        })
+        summary = event_summary(build_analysis_frames(PdcEvidenceService(MontandonConfig(api_token="fixture"), api_provider=fake).retrieve(spec)))
+        figure = fig_event_map(summary, "people")
+        legend_names = [trace.name for trace in figure.data if trace.showlegend is not False]
+        self.assertTrue(legend_names)
+        self.assertTrue(set(legend_names) <= set(HAZARD_GROUP_ORDER), legend_names)
 
 
 if __name__ == "__main__":

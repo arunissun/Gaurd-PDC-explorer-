@@ -24,13 +24,17 @@ as if later validation had already happened.
 - The completeness-chart 200% defect is fixed and now has a regression test.
   Clicking a bar in the dashboard's "Largest events" chart selects the event
   (verified in a headless browser on 2026-10-04 with synthetic data); map-dot
-  clicks could not be checked offline and remain to be confirmed.
+  clicks select the event too (confirmed on production India data on
+  2026-10-05).
 - The 2026-10-04 code review fixed redirect handling (the API bearer token can
   no longer follow a redirect to another host), stale API-cache pages, an
   uncaught dropped-connection error, queued requests continuing after a fatal
-  error, a stale Download-tab bundle, and two pandas deprecation warnings. 68
-  local tests pass. No production query was rerun: the cloud review session
-  had no API token and its network policy blocked the Montandon host.
+  error, a stale Download-tab bundle, and two pandas deprecation warnings. The
+  cloud review session had no API token, so these fixes were re-checked
+  locally against production on 2026-10-05: retrieval, pagination and the
+  alert-area asset work with redirects refused. That check also fixed the map
+  size legend and a tab reset after retrieval (see the 2026-10-05 entry). 70
+  local tests pass.
 - Real-local validation was deliberately skipped after switching the
   interfaces to API-only. The user reported a complete local profile with
   zero invalid JSON rows; no profile was rerun here, and index completion is
@@ -86,7 +90,7 @@ Updated 2026-10-04.
 | 6 — Analytical tables and figures | Implemented; completeness defect fixed with a regression test; dashboard figures in `figures.py` have no direct tests yet |
 | 7 — Maps | Implemented; dashboard has event points, density and PDC alert areas; no clustering; choropleth not shown in any interface; manual map UAT pending |
 | 8 — Interactive notebook | Implemented on the pre-redesign figures, one year only; authenticated browser UAT pending; rebuild or retirement undecided |
-| 9 — Streamlit dashboard | Redesigned 2026-10-01; live-tested on BGD 2024–25 and PHL 2023–26; headless browser checks on synthetic data 2026-10-04; all-country overview not offered |
+| 9 — Streamlit dashboard | Redesigned 2026-10-01; live-tested on BGD 2024–25 and PHL 2023–26; headless browser checks on synthetic data 2026-10-04; review fixes live-tested on IND 2023–24 and 2024 (2026-10-05); all-country overview not offered |
 | 10 — Exports and end-to-end validation | Core exports validated on fixtures and fresh three-country 2024 queries; real-local scenarios skipped and static report images deferred |
 | 11 — Temporal evolution extension | Implemented in the notebook; the redesigned dashboard shows peak/latest values and change counts but no snapshot timeline chart |
 
@@ -898,3 +902,51 @@ or source-data change was made.
 - All-country overview and choropleth in the dashboard; tests for
   `figures.py`, `maps.py` and the event-summary functions; notebook rebuild or
   retirement; README update.
+
+## 2026-10-05 — Live verification of the 2026-10-04 review fixes
+
+Checked branch `claude/awesome-goldberg-ydak44` locally against the production
+Montandon API with the local token, then merged it into `main` (not pushed).
+
+**Production checks (read-only `POST /search` and asset `GET`)**
+- `scripts/smoke_test_query.py --country BGD --year 2024 --month 5 --refresh`:
+  complete, 1 page, 29 items, not from cache. Redirects refused, no HTTP 3xx.
+- Dashboard, India: 2022–2026 (all 60 months of events, hazards and exposure
+  values retrieved; the run was then superseded), 2023–2024 (complete, 167 API
+  pages, 531 events, 75–107 s) and 2024 (complete, 114 pages, 60 s). All
+  months, all hazards and all six measures. No endpoint answered with a
+  redirect.
+- All seven tabs rendered without exceptions on 2023–2024 and on 2024.
+- Map-dot click selects the event (Rajahmundry, Chennai and Machilipatnam
+  floods).
+- Event detail loaded the PDC alert area for the Machilipatnam flood from the
+  public object host with redirects refused (1 version, 25.6k km², event point
+  inside).
+- Download: after preparing the bundle (9 files), changing the measure hid the
+  files and showed the "Prepare again" note.
+- The dashboard always sends `refresh_api_cache=True`, so each Retrieve is a
+  live pull. The cache-loader fix only affects notebook and script runs and is
+  covered by its unit test.
+
+**Fixed during the check**
+- Map size key: Plotly caps legend symbols at 16 px, so the 1M, 10M and 100M
+  reference circles (18–27 px on the map) were drawn the same size. The size
+  key is now an HTML row under the map at the exact dot diameters
+  (`maps.size_legend_items`, `components.size_legend`). The hazard legend is
+  no longer grouped, so its entries flow in rows.
+- The first chart or map click after a retrieval reset the tabs to Overview.
+  The one-off "Retrieved in N s" status shifted the tabs' position on the next
+  rerun. The status now renders in a fixed container.
+- Tests: `MapSizeLegendTests` (2) added to `tests/test_review_fixes.py`. Full
+  suite: 70 tests passed.
+
+**Observed, not changed**
+- Large pulls are slow. India 2022–2026 spent minutes in "Preparing charts"
+  after retrieval, and that step blocks reruns. The India 2024 evidence bundle
+  took about 2 minutes to build.
+- Overview box-plot axis labels crowd at narrow widths.
+
+**Still open**
+- All-country annual overview in the dashboard. Tests for the remaining
+  `figures.py` and `maps.py` functions. Notebook rebuild or retirement, and the
+  notebook/dashboard parity check (acceptance #14). README refresh.

@@ -20,7 +20,9 @@ hospitals or capital).
 ## Map
 
 4. **Event map** (`fig_event_map`): one dot per event at the PDC event point. Colour is the
-   hazard, size is the peak-exposure class, and multi-country alerts are faded. The **Density**
+   hazard, size grows by a fixed step per tenfold increase in peak exposure (log scale), and
+   multi-country alerts are faded. The size key under the map is drawn in HTML at the exact dot
+   diameters (`size_legend_items`), because Plotly caps legend symbols at 16 px. The **Density**
    layer swaps the dots for a heat layer. Clicking a dot selects the event.
 5. **Alert-area overlay** (`fig_alert_area_overlay`, on demand): the latest PDC alert areas of
    the N largest events of one hazard, drawn translucent so overlaps darken. It appears only

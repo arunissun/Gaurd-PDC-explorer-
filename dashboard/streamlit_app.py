@@ -360,6 +360,8 @@ def tab_map(summary: pd.DataFrame, measure: str, show_bulletins: bool, selected:
     with left:
         fig = M.fig_event_map(summary, measure, layer=layer, show_bulletins=show_bulletins, show_all=show_all, selected_family=selected)
         _chart(fig, "map-events", selectable=layer == "points")
+        if layer == "points":
+            ui.size_legend(f"{F.MEASURE_LABELS[measure]} (peak)", M.size_legend_items(summary, measure, show_bulletins=show_bulletins))
         ui.note(_map_caption(summary, show_bulletins, show_all))
     with right:
         ui.section("Selected event", "Click a dot to select an event.")
@@ -753,8 +755,12 @@ def main() -> None:
         ["Live Montandon API", "Read-only", *loaded],
     )
     queries, clicked = sidebar()
+    # Fixed slot for the retrieval status: without it the tabs below shift
+    # position on the next rerun, and Streamlit resets them to the first tab.
+    status_slot = st.container()
     if clicked and queries:
-        run_retrieval(queries)
+        with status_slot:
+            run_retrieval(queries)
     state = st.session_state.get("pdc")
     if not state:
         ui.empty_state("Choose countries and years, then press Retrieve data", "The dashboard loads PDC events, hazard alerts and exposure values for up to 5 countries and 5 years.")

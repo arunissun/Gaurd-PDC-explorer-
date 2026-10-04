@@ -175,21 +175,34 @@ def fig_event_map(
         row = data[data["family_key"] == selected_family].iloc[0]
         fig.add_trace(go.Scattermap(lat=[row["latitude"]], lon=[row["longitude"]], mode="markers",
                                     marker=dict(size=row["_size"] + 14, color=INK, opacity=0.2), hoverinfo="skip", showlegend=False))
-    # Legend: hazard colours, then reference sizes for the decades present.
+    # Legend: hazard colours only. Plotly draws legend symbols at most 16 px,
+    # so marker sizes are shown by size_legend_items() outside the figure.
     for group in [group for group in HAZARD_GROUP_ORDER if group in set(data["hazard_group"])]:
         fig.add_trace(go.Scattermap(lat=[None], lon=[None], mode="markers", marker=dict(size=10, color=hazard_color(group)), name=group,
-                                    legendgroup="hazard", hoverinfo="skip"))
-    positive = values[values > 0]
-    if not positive.empty:
-        low, high = positive.min(), positive.max()
-        references = [value for value in SIZE_LEGEND_VALUES if low / 10 < value <= high * 3] or [SIZE_LEGEND_VALUES[0]]
-        for index, value in enumerate(references):
-            fig.add_trace(go.Scattermap(
-                lat=[None], lon=[None], mode="markers", marker=dict(size=exposure_size(value), color="#9AA1AB"), name=compact(value),
-                legendgroup="size", legendgrouptitle=dict(text=f"{MEASURE_LABELS[measure]} (peak)") if index == 0 else None, hoverinfo="skip",
-            ))
-    fig.update_layout(clickmode="event+select", legend=dict(groupclick="toggleitem", itemclick=False, itemdoubleclick=False))
+                                    hoverinfo="skip"))
+    fig.update_layout(clickmode="event+select", legend=dict(itemclick=False, itemdoubleclick=False))
     return _base_map(fig, center, zoom, height=height)
+
+
+def size_legend_items(summary: pd.DataFrame, measure: str = "people", *, show_bulletins: bool = False) -> list[tuple[str, float]]:
+    """(label, marker diameter in px) for the decades of peak values on the event map.
+
+    The diameters are exactly those fig_event_map uses, so a legend drawn from
+    them matches the dots; an empty list means no positive value is plotted.
+    """
+
+    points = summary[summary["valid_point"]] if not summary.empty else summary
+    if not show_bulletins and not points.empty:
+        points = points[~points["caveat"].fillna("").str.startswith("Tsunami bulletin")]
+    if points.empty:
+        return []
+    values = pd.to_numeric(points[f"{measure}_peak"], errors="coerce")
+    positive = values[values > 0]
+    if positive.empty:
+        return []
+    low, high = positive.min(), positive.max()
+    references = [value for value in SIZE_LEGEND_VALUES if low / 10 < value <= high * 3] or [SIZE_LEGEND_VALUES[0]]
+    return [(compact(value), exposure_size(value)) for value in references]
 
 
 def fig_country_choropleth(counts: pd.DataFrame) -> go.Figure:
