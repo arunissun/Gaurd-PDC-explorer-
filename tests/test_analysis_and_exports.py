@@ -41,6 +41,9 @@ class ExportTests(unittest.TestCase):
                     "manifest.json",
                     "report.md",
                     "report.html",
+                    "chart_events_by_month.svg",
+                    "chart_events_by_hazard.svg",
+                    "chart_top_events.svg",
                 },
             )
             counts = validate_export_bundle(temporary)
@@ -57,6 +60,12 @@ class ExportTests(unittest.TestCase):
             self.assertIn("## Selected category summary", report)
             self.assertIn("## Selected event", report)
             self.assertIn("## Provenance", report)
+            # Every chart is linked from the Markdown report and drawn inline in the HTML report.
+            html_report = paths["report.html"].read_text(encoding="utf-8")
+            for name in [name for name in paths if name.endswith(".svg")]:
+                self.assertIn(f"]({name})", report)
+                self.assertTrue(paths[name].read_text(encoding="utf-8").startswith("<svg"))
+            self.assertEqual(html_report.count("<svg"), 3)
 
             workbook = load_workbook(paths["pdc_evidence.xlsx"], read_only=False)
             self.assertEqual(tuple(workbook.sheetnames), SHEET_NAMES)

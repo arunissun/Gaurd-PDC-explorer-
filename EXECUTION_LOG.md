@@ -14,13 +14,16 @@ as if later validation had already happened.
   only. Local JSONL exports and SQLite are not interface data sources and
   cannot be used as a fallback after an API failure.
 - The dashboard was redesigned on 2026-10-01 (tabs: Overview, Map, Events,
-  Exposure, Event detail, Compare countries, Data quality, Download). It
+  Exposure, Event detail, Compare countries, Data quality, Advanced, Download;
+  Advanced added 2026-10-05). It
   accepts up to five countries and up to five consecutive years; results stay
   country-specific and shared events are counted once. Every figure is listed
   in [DASHBOARD_FIGURES.md](docs/DASHBOARD_FIGURES.md).
 - The notebook still uses the pre-redesign figures (`visuals.py`) and accepts
-  one year only. It still offers the one-year annual overview; the dashboard
-  does not, and the country choropleth is not shown in either interface.
+  one year only. It still offers the one-year annual overview. The dashboard
+  deliberately has no all-country view (the user ruled worldwide retrieval too
+  slow on 2026-10-05); its Compare countries tab shows a choropleth and a
+  combined clustered map of the 2–5 selected countries instead.
 - The completeness-chart 200% defect is fixed and now has a regression test.
   Clicking a bar in the dashboard's "Largest events" chart selects the event
   (verified in a headless browser on 2026-10-04 with synthetic data); map-dot
@@ -33,13 +36,13 @@ as if later validation had already happened.
   cloud review session had no API token, so these fixes were re-checked
   locally against production on 2026-10-05: retrieval, pagination and the
   alert-area asset work with redirects refused. That check also fixed the map
-  size legend and a tab reset after retrieval (see the 2026-10-05 entry). 70
-  local tests pass.
+  size legend and a tab reset after retrieval (see the 2026-10-05 entries).
+  104 local tests pass.
 - Real-local validation was deliberately skipped after switching the
   interfaces to API-only. The user reported a complete local profile with
   zero invalid JSON rows; no profile was rerun here, and index completion is
   not confirmed. Neither is a blocker for the API-only interfaces.
-- Static report images remain deferred. The project is now a Git repository
+- The Markdown and HTML reports include SVG charts (2026-10-05). The project is now a Git repository
   (GitHub `arunissun/Gaurd-PDC-explorer-`); earlier entries that say it is not
   describe the state at that time.
 
@@ -90,8 +93,8 @@ Updated 2026-10-04.
 | 6 — Analytical tables and figures | Implemented; completeness defect fixed with a regression test; dashboard figures in `figures.py` have no direct tests yet |
 | 7 — Maps | Implemented; dashboard has event points, density and PDC alert areas; no clustering; choropleth not shown in any interface; manual map UAT pending |
 | 8 — Interactive notebook | Implemented on the pre-redesign figures, one year only; authenticated browser UAT pending; rebuild or retirement undecided |
-| 9 — Streamlit dashboard | Redesigned 2026-10-01; live-tested on BGD 2024–25 and PHL 2023–26; headless browser checks on synthetic data 2026-10-04; review fixes live-tested on IND 2023–24 and 2024 (2026-10-05); all-country overview not offered |
-| 10 — Exports and end-to-end validation | Core exports validated on fixtures and fresh three-country 2024 queries; real-local scenarios skipped and static report images deferred |
+| 9 — Streamlit dashboard | Redesigned 2026-10-01; live-tested on BGD 2024–25 and PHL 2023–26; headless browser checks on synthetic data 2026-10-04; review fixes live-tested on IND 2023–24 and 2024; multi-country view, clusters and Advanced tab live-tested on BGD+NPL+PHL 2024 (2026-10-05); all-country view declined |
+| 10 — Exports and end-to-end validation | Core exports validated on fixtures and fresh three-country 2024 queries; real-local scenarios skipped; SVG report charts added 2026-10-05 |
 | 11 — Temporal evolution extension | Implemented in the notebook; the redesigned dashboard shows peak/latest values and change counts but no snapshot timeline chart |
 
 ## Stage 0 — Create project and contracts
@@ -950,3 +953,53 @@ Montandon API with the local token, then merged it into `main` (not pushed).
 - All-country annual overview in the dashboard. Tests for the remaining
   `figures.py` and `maps.py` functions. Notebook rebuild or retirement, and the
   notebook/dashboard parity check (acceptance #14). README refresh.
+
+## 2026-10-05 — Multi-country view, clusters, Advanced tab, report charts, tests
+
+Branch `feature/multi-country-view`, merged into `main` locally (not pushed).
+
+**Decision:** the all-country annual overview (plan acceptance #1, all-country
+part) is **not** implemented in the dashboard. A worldwide year is 5,600–75,000
+events; a live 2023 worldwide pull was still on hazard alerts after 75 s and was
+stopped. The user asked to keep live pulls to 2–4 countries and one year, and to
+reuse the planned overview features when several countries are selected.
+
+**Implemented**
+- Overview box plot: hazard names wrap at word boundaries (`figures.wrap_label`,
+  12 characters per line; counts on their own line), so labels no longer overlap
+  on narrow screens.
+- Compare countries tab (2+ countries): a countries choropleth
+  (`maps.fig_country_choropleth`, continuous scale from zero with round ticks
+  for up to 8 countries; click a country to show it in the other tabs) and one
+  combined event map of all selected countries (`analysis.combined_country_events`:
+  each event once, exposure values removed because they are per country;
+  `fig_event_map(..., uniform_size=9)`, Clusters layer by default). The summary
+  table adds "Also list other countries" and "Main hazards"
+  (`analysis.country_event_counts`).
+- Map clustering: a **Clusters** layer (MapLibre clustering up to zoom 6, count
+  badges of distinct events) on the Map tab and the combined map.
+- Advanced tab (`diagnostics.py`): query JSON and fingerprint, the `POST /search`
+  body per collection, every retrieval window with pages/items/cache use/
+  adaptations, and the original STAC items of one event (redacted, bounded).
+- Report charts (`report_charts.py`): plain SVG, no new dependency. Events per
+  month, events by hazard, and the 10 largest events (country detail) or the
+  countries with most events (notebook's annual mode). `report.md` links them,
+  `report.html` draws them inline, `manifest.json` hashes them. The report's
+  period line now uses the full period label.
+- README rewritten for the current state; `docs/DASHBOARD_FIGURES.md` updated.
+
+**Tests (local):** `tests/test_dashboard_figures.py` adds 34 tests (figures,
+maps, alert-area parsing, event summary, coverage, country counts, combined
+events, diagnostics, report charts, annual-mode service path). The export test
+now expects the chart files. Full suite: 104 tests passed.
+
+**Production checks (read-only):** Bangladesh + Nepal + Philippines, 2024, five
+measures: complete in 30–33 s. All nine tabs rendered without exceptions; the
+choropleth showed 59 / 112 / 358 distinct events with a 0–400 colour bar; a
+click on the Philippines switched the other tabs to it; the combined map showed
+522 distinct events in cluster badges; the Clusters layer worked on the Map tab;
+the Advanced tab listed 12 windows and an event's original items; the evidence
+bundle included the three SVG charts.
+
+**Not changed:** slow "Preparing charts" and bundle building on large pulls
+(deferred by the user). The notebook was not touched.

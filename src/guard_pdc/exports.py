@@ -19,8 +19,9 @@ import pandas as pd
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 
-from .analysis import AnalysisFrames, TEMPORAL_NOTE, build_analysis_frames, temporal_summary
+from .analysis import AnalysisFrames, TEMPORAL_NOTE, build_analysis_frames, event_summary, temporal_summary
 from .models import QueryResult
+from .report_charts import report_charts
 from .visuals import EXPOSURE_NOTE, MAP_NOTE, build_map_layers
 
 
@@ -339,7 +340,7 @@ Query fingerprint: `{query.fingerprint}`
 
 - Analysis: {query.analysis_mode}
 - Country: {query.country_code or "All countries (event/hazard overview only)"}
-- Period: {query.year}; months {", ".join(map(str, query.months))}
+- Period: {query.period_label}
 - Hazard codes: {", ".join(query.hazard_codes) or "All hazards within the bounded period"}
 - Impact types: {", ".join(query.impact_types)}
 - Categories: {", ".join(query.categories)}
@@ -427,11 +428,19 @@ def build_export_files(
         indent=2,
     ).encode("utf-8")
     report = _report(result, frames, counts, selected_category, selected_family_key)
-    files["report.md"] = report.encode("utf-8")
+    charts = report_charts(event_summary(frames), result.query, selected_category)
+    for name, (_, svg) in charts.items():
+        files[name] = svg.encode("utf-8")
+    chart_files = "".join(f"- `{name}`\n" for name in charts)
+    chart_md = "".join(f"### {caption}\n\n![{caption}]({name})\n\n" for name, (caption, _) in charts.items())
+    files["report.md"] = (report + chart_files + (f"\n## Charts\n\n{chart_md}" if charts else "")).encode("utf-8")
+    chart_html = "".join(f"<figure>{svg}<figcaption>{escape(caption)}</figcaption></figure>" for caption, svg in charts.values())
     files["report.html"] = (
         "<!doctype html><meta charset='utf-8'><title>PDC evidence report</title>"
-        "<style>body{font:16px Arial,sans-serif;max-width:960px;margin:2rem auto;line-height:1.5}pre{white-space:pre-wrap}</style>"
-        f"<pre>{escape(report)}</pre>"
+        "<style>body{font:16px Arial,sans-serif;max-width:960px;margin:2rem auto;line-height:1.5}pre{white-space:pre-wrap}"
+        "figure{margin:1.5rem 0}figure svg{max-width:100%;height:auto;border:1px solid #E3E6EB;border-radius:8px}"
+        "figcaption{color:#5B6472;font-size:14px}</style>"
+        f"<pre>{escape(report + chart_files)}</pre>" + (f"<h2>Charts</h2>{chart_html}" if charts else "")
     ).encode("utf-8")
     manifest = {
         "schema_version": 1,

@@ -901,3 +901,61 @@ def coverage_by_year(frames: AnalysisFrames) -> pd.DataFrame:
     year = pd.to_datetime(events["event_datetime"], errors="coerce", utc=True, format="mixed").dt.year
     grouped = events.assign(year=year).groupby("year").agg(event_snapshots=("event_item_id", "nunique"), event_families=("family_key", "nunique"))
     return grouped.reindex(years, fill_value=0).rename_axis("year").reset_index()
+
+
+def _country_rows(summary: pd.DataFrame) -> pd.DataFrame:
+    """One row per (event family, associated country); events without a country are dropped."""
+
+    if summary.empty:
+        return pd.DataFrame(columns=["family_key", "country_code", "hazard_group", "snapshot_count", "multi_country"])
+    rows = summary[["family_key", "countries", "hazard_group", "snapshot_count", "multi_country"]].explode("countries")
+    rows = rows.dropna(subset=["countries"]).rename(columns={"countries": "country_code"})
+    return rows.drop_duplicates(["family_key", "country_code"])
+
+
+def country_event_counts(summary: pd.DataFrame, *, top_hazards: int = 3) -> pd.DataFrame:
+    """Distinct PDC event families per associated country.
+
+    An event that lists several countries is counted once in each of them, so
+    country totals overlap and must not be added to obtain a global total.
+    Only event counts are produced: exposure is never summed across events.
+    """
+
+    columns = ["country_code", "event_families", "event_snapshots", "multi_country_events", "top_hazards"]
+    rows = _country_rows(summary)
+    if rows.empty:
+        return pd.DataFrame(columns=columns)
+    grouped = rows.groupby("country_code")
+    counts = pd.DataFrame({
+        "event_families": grouped["family_key"].nunique(),
+        "event_snapshots": grouped["snapshot_count"].sum().astype(int),
+        "multi_country_events": grouped["multi_country"].sum().astype(int),
+    })
+    hazards = rows.groupby(["country_code", "hazard_group"])["family_key"].nunique().rename("events").reset_index()
+    hazards = hazards.sort_values(["country_code", "events", "hazard_group"], ascending=[True, False, True], kind="stable")
+    counts["top_hazards"] = hazards.groupby("country_code").apply(
+        lambda frame: ", ".join(f"{group} ({events})" for group, events in zip(frame["hazard_group"].head(top_hazards), frame["events"].head(top_hazards), strict=True)),
+        include_groups=False,
+    )
+    counts = counts.reset_index().sort_values(["event_families", "country_code"], ascending=[False, True], kind="stable")
+    return counts[columns].reset_index(drop=True)
+
+
+def combined_country_events(summaries: Mapping[str, pd.DataFrame]) -> pd.DataFrame:
+    """Events of several country summaries, once each, with exposure values removed.
+
+    PDC exposure values are estimates for the queried country, so an event
+    shared by two queried countries carries two different values; neither is
+    picked over the other. Event identity, hazard, alert and location are kept.
+    """
+
+    frames = [frame for frame in summaries.values() if not frame.empty]
+    if not frames:
+        return pd.DataFrame(columns=SUMMARY_COLUMNS)
+    combined = pd.concat(frames, ignore_index=True).drop_duplicates("family_key").reset_index(drop=True)
+    for measure in SUMMARY_MEASURES:
+        for suffix in ("peak", "latest"):
+            combined[f"{measure}_{suffix}"] = np.nan
+        combined[f"{measure}_status"] = "not_combined"
+    combined["country"] = None
+    return combined
