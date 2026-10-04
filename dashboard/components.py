@@ -78,6 +78,10 @@ div[data-testid="stTabs"] .react-aria-SelectionIndicator {{ display:none; }}
 .pdc-event .n {{ color:{INK_MUTED}; font-size:0.8rem; margin-top:6px; }}
 .pdc-swatch {{ display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:baseline; }}
 .pdc-note {{ color:{INK_MUTED}; font-size:0.8rem; margin:2px 0 8px 0; }}
+.pdc-sizes {{ display:flex; align-items:flex-end; gap:18px; flex-wrap:wrap; margin:6px 0 6px 4px; }}
+.pdc-sizes .h {{ color:{INK_SECONDARY}; font-size:0.8rem; font-weight:600; align-self:center; margin-right:2px; }}
+.pdc-sizes .i {{ display:flex; flex-direction:column; align-items:center; gap:3px; color:{INK_SECONDARY}; font-size:0.76rem; }}
+.pdc-sizes .c {{ border-radius:50%; background:rgba(74,85,101,0.16); border:1.5px solid {INK_SECONDARY}; box-sizing:border-box; }}
 .pdc-empty {{ text-align:center; color:{INK_SECONDARY}; padding:48px 16px; border:1px dashed {BORDER}; border-radius:16px; background:{SURFACE}; }}
 .pdc-empty h3 {{ color:{INK}; font-size:1.1rem; margin-bottom:6px; }}
 div[data-testid="stTabs"] button p {{ font-size:0.92rem; font-weight:600; }}
@@ -151,6 +155,17 @@ def event_card(title: str, lines: Iterable[str], chips_html: str = "", footnote:
     body = "".join(f"<p class='m'>{_e(line)}</p>" for line in lines if line)
     foot = f"<p class='n'>{_e(footnote)}</p>" if footnote else ""
     st.markdown(f"<div class='pdc-event'><p class='t'>{dot}{_e(title)}</p>{chips_html}{body}{foot}</div>", unsafe_allow_html=True)
+
+
+def size_legend(title: str, items: Iterable[tuple[str, float]]) -> None:
+    """Marker-size key drawn at the exact pixel diameters used on the map."""
+
+    entries = "".join(
+        f"<div class='i'><div class='c' style='width:{diameter:.1f}px;height:{diameter:.1f}px'></div>{_e(label)}</div>"
+        for label, diameter in items
+    )
+    if entries:
+        st.markdown(f"<div class='pdc-sizes'><span class='h'>{_e(title)}</span>{entries}</div>", unsafe_allow_html=True)
 
 
 def empty_state(title: str, body: str) -> None:

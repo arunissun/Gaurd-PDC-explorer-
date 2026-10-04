@@ -360,6 +360,8 @@ def tab_map(summary: pd.DataFrame, measure: str, show_bulletins: bool, selected:
     with left:
         fig = M.fig_event_map(summary, measure, layer=layer, show_bulletins=show_bulletins, show_all=show_all, selected_family=selected)
         _chart(fig, "map-events", selectable=layer == "points")
+        if layer == "points":
+            ui.size_legend(f"{F.MEASURE_LABELS[measure]} (peak)", M.size_legend_items(summary, measure, show_bulletins=show_bulletins))
         ui.note(_map_caption(summary, show_bulletins, show_all))
     with right:
         ui.section("Selected event", "Click a dot to select an event.")
@@ -634,15 +636,24 @@ def tab_quality(results: dict[str, QueryResult], views: dict[str, dict[str, Any]
 
 
 def tab_download(result: QueryResult, summary: pd.DataFrame, measure: str, selected: str | None) -> None:
-    ui.section("Event summary", "One row per event with peak and latest values for every measure.")
+    ui.section(
+        "Event summary",
+        "One row per event with peak and latest values for every measure. Contains the events currently shown: "
+        "the 'Hazards shown' and 'Tsunami bulletins' settings apply.",
+    )
     table = public_frame(summary.drop(columns=["footprint_url"], errors="ignore"))
     st.download_button("Download event summary (CSV)", table.to_csv(index=False).encode("utf-8"), file_name=f"pdc_event_summary_{result.query.country_code}.csv", mime="text/csv")
     ui.section("Full evidence bundle", "Tables, provenance and manifest for the selected country. Contains record IDs, never credentials.")
+    # The bundle depends on the selected measure and event as well as the query,
+    # so files prepared for an earlier selection are never offered.
+    bundle_key = (result.query.fingerprint, MEASURE_CATEGORY[measure], selected)
     if st.button("Prepare evidence files"):
         with st.spinner("Building files…"):
-            st.session_state["exports"] = (result.query.fingerprint, build_export_files(result, selected_category=MEASURE_CATEGORY[measure], selected_family_key=selected))
+            st.session_state["exports"] = (bundle_key, build_export_files(result, selected_category=MEASURE_CATEGORY[measure], selected_family_key=selected))
     stored = st.session_state.get("exports")
-    if stored and stored[0] == result.query.fingerprint:
+    if stored and stored[0] != bundle_key:
+        ui.note("The measure or selected event changed since the files were prepared. Press Prepare evidence files again.")
+    elif stored:
         columns = st.columns(3)
         for index, (name, data) in enumerate(stored[1].items()):
             columns[index % 3].download_button(name, data=data, file_name=name, key=f"download-{name}", width="stretch")
@@ -744,8 +755,12 @@ def main() -> None:
         ["Live Montandon API", "Read-only", *loaded],
     )
     queries, clicked = sidebar()
+    # Fixed slot for the retrieval status: without it the tabs below shift
+    # position on the next rerun, and Streamlit resets them to the first tab.
+    status_slot = st.container()
     if clicked and queries:
-        run_retrieval(queries)
+        with status_slot:
+            run_retrieval(queries)
     state = st.session_state.get("pdc")
     if not state:
         ui.empty_state("Choose countries and years, then press Retrieve data", "The dashboard loads PDC events, hazard alerts and exposure values for up to 5 countries and 5 years.")
