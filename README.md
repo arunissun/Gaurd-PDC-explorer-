@@ -99,11 +99,3 @@ uv run python scripts/render_figure_gallery.py
 
 On Windows use forward slashes in `--env-file` paths. Outputs go to the
 ignored `data/` and `outputs/` folders.
-
-## Project rules and records
-
-- [AGENTS.md](AGENTS.md): scope, secrets, evidence semantics, failure policy.
-- [docs/DATA_CONTRACT.md](docs/DATA_CONTRACT.md), [docs/QUERY_POLICY.md](docs/QUERY_POLICY.md),
-  [docs/VISUAL_SPEC.md](docs/VISUAL_SPEC.md): contracts and design rules.
-- [docs/VERIFIED_FINDINGS.md](docs/VERIFIED_FINDINGS.md): what production data was checked and found.
-- [EXECUTION_LOG.md](EXECUTION_LOG.md): dated record of every stage and check.
