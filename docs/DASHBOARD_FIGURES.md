@@ -102,5 +102,8 @@ events by hazard, and the 10 largest events by the selected measure.
 - `fig_events_by_period` (figures.py) is built and importable, but no dashboard tab calls it.
 - There is no all-country (worldwide) view: retrieving every country for a year is too slow
   from the API (decision of 2026-10-05).
-- The notebook uses the older figure set in `src/guard_pdc/visuals.py` (Figures 1–14 of the
-  original plan, e.g. event completeness and category availability), not the figures above.
+- The notebook (`notebooks/pdc_evidence_explorer.ipynb`, rebuilt 2026-10-06) draws the same
+  figures above with its own code, written out in its cells. Its Event detail section adds an age
+  profile with the age-band reconciliation (only when Age groups were retrieved), a snapshot
+  timeline and a change-over-time chart for the chosen measure; its Data quality section adds
+  geometry cards. It no longer uses the older Stage 6 figure set in `src/guard_pdc/visuals.py`.

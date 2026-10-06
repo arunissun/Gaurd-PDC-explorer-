@@ -15,6 +15,11 @@ local index. Each Retrieve action makes fresh API requests; view changes
 reuse the already loaded result. Local profiling/indexing and the explicit
 local/mixed service modes remain standalone tools, not interface sources.
 
+The notebook (rebuilt 2026-10-06) does not use the service layer. It builds the
+same search bodies in its own cells, keeps no API cache, and sends every request
+through `PdcApiProvider.request_json`, which allows only metadata `GET`s and
+`search`, only to the configured origin (see "Notebook retrieval" below).
+
 ## QuerySpec
 
 The public service accepts one validated immutable request with these fields:
@@ -55,10 +60,12 @@ cannot accidentally retrieve impact detail.
 
 ## Interface country groups
 
-The notebook and dashboard accept one or more ISO3 codes, such as
-`PHL, BGD, NPL`, separated by commas, semicolons, or whitespace. Input is
-uppercased, deduplicated, sorted, and checked for three-letter format before
-retrieval. This does not validate membership in an exhaustive country registry.
+The dashboard and the notebook offer a selection of one to five countries by
+name (the notebook as a multi-select). The package's `parse_country_codes`
+accepts one or more ISO3 codes, such as `PHL, BGD, NPL`, separated by commas,
+semicolons, or whitespace: input is uppercased, deduplicated, sorted, and checked
+for three-letter format before retrieval. This does not validate membership in
+an exhaustive country registry.
 
 Each selected country produces its own validated single-country `QuerySpec`
 and fresh API result; the service contract has not become a multi-country
@@ -174,3 +181,23 @@ visible. No failure is converted into an empty evidence result.
   failed windows and reuses completed windows from memory.
 - Selectable years in the interfaces come from one `limit=1` search per year
   (`years_with_events`); this check is not evidence.
+
+## Notebook retrieval (2026-10-06)
+
+`notebooks/pdc_evidence_explorer.ipynb` has its own retrieval code (steps 4 and 5), so the
+dashboard and the notebook must be compared after a change to either (same query: event IDs,
+counts, events per month, peak People per event).
+
+- Same as the dashboard: the search bodies (CQL2 filter, `fields`, `limit` 250), one monthly
+  window per (year, month), hazards and impacts only for months that returned events, every `next`
+  link followed to its end (POST links with their own body; a link marked `merge` is merged into the
+  previous body), the 25,000-item cap that splits a window into weeks and then days, the page-size
+  ladder 250 → 100 → 50, bisection of a window after a deep-page failure or an overload status down
+  to one day, a failure budget of 150 failed requests, four worker threads, and the query
+  fingerprint recipe.
+- Different: no API cache; no splitting of an impact filter into type/category pairs; no "retry
+  failed parts" (running step 5 again retrieves everything again); a window that cannot be read is
+  listed in the retrieval table and in a warning, and the figures say the result is incomplete.
+- Every request goes through `PdcApiProvider.request_json`: retries of 429/500/502/503/504 and
+  transport errors, redirects refused, the bearer token sent only to the configured origin, and an
+  allow-list of metadata `GET`s and `search`.

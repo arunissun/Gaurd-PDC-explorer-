@@ -1003,3 +1003,54 @@ bundle included the three SVG charts.
 
 **Not changed:** slow "Preparing charts" and bundle building on large pulls
 (deferred by the user). The notebook was not touched.
+
+## 2026-10-06 — Notebook rebuild (Stage 8, plan section 15): built, validation pending
+
+The user approved the revised notebook plan and asked first for the code to be built and for testing to
+follow later. Nothing below has been committed or pushed.
+
+**Built**
+- `notebooks/pdc_evidence_explorer.ipynb` rebuilt from scratch: 221 cells (160 code, 61 Markdown), outputs
+  cleared, in the order of plan section 15.4 (1 set up, 2 sign in, 3 filters, 4 query, 5 retrieve, 6 process,
+  7 view, 8 overview, 9 map, 10 events, 11 exposure, 12 event detail, 13 compare countries, 14 data quality,
+  15 export, 16 evidence rules). At the user's request every code cell holds one or two small functions and
+  the call is in the next cell. Retrieval (monthly POST search, every continuation link, item-cap split,
+  error ladder, progress), processing (item tables, link validation, event families, per-event summary) and
+  all charts and maps are written out in the cells.
+- Package: `PdcApiProvider.request_json` (public single-request wrapper: only metadata `GET`s and `search`,
+  only to the configured origin, retries counted through `stats`), `config.find_token` (environment, then
+  `.env`; never printed), `notebook_ui.py` removed.
+- Dependencies split into runtime (numpy, pandas, plotly, ipywidgets >=7.7, openpyxl, pyproj; `pyproj` was
+  only present through lonboard) and a `dev` group; `uv.lock` regenerated (structure only, no version
+  changed). `binder/` (Python 3.12, `pip install .`) and `.gitattributes` added.
+- `AGENTS.md` (thin-interface rule, token sources, request allow-list), README, `docs/QUERY_POLICY.md`
+  (notebook retrieval section), `docs/DASHBOARD_FIGURES.md`, `docs/VISUAL_SPEC.md` updated.
+- Tests and tools: `tests/test_notebook_support.py` (wrapper and token lookup), `tests/fake_stac.py` (in-memory STAC
+  search server and a synthetic PDC pool), `scripts/run_notebook.py` (headless nbclient runner, live or offline) and
+  `scripts/compare_notebook_dashboard.py` (notebook against dashboard for the same query). The two scripts compile
+  but were not run in their final form. The old `NotebookExplorer` tests were removed and three dashboard
+  tests no longer use it.
+
+**Checked before testing was deferred (local, offline; no production request)**
+- Baseline suite before any change: 107 tests passed. `tests.test_notebook_support`: 11 passed.
+- Sections 1 to 11 were executed headless (nbclient) against saved real production responses (PHL, BGD, NPL,
+  2024, replayed through the fake server): no errors, 15 figures drawn, and the notebook's tables (event
+  summary, link edges, item tables, events per month, peak values) were identical to the dashboard pipeline's
+  on the same replay. The final cell split was re-run through section 11 with the same result.
+- Static only for the final state: every code cell compiles, no name is used before it is defined
+  (module level and inside functions), no code cell has more than two functions, the Python files edited
+  compile.
+
+**Not executed yet**: sections 12 to 16 (event detail, compare countries, data quality, export, rules), the
+final package edits and the changed test files, the full test suite, any live run, the dashboard comparison,
+the secret scan of an executed notebook and its exports, JupyterLab and Binder/Colab behaviour.
+
+**Known differences from the dashboard** (documented in `docs/QUERY_POLICY.md`): no API cache; no split of an
+impact filter into type/category pairs; no "retry failed parts" (re-running step 5 retrieves everything again).
+
+**2026-10-06: notebook shortened (static only, nothing executed)**
+- 221 cells (160 code, 61 text) reduced to 113 (91 code, 22 text): each chart's function and its call share a cell, small
+  neighbouring cells merged, and short explanatory text cells folded into one-line comments. Every figure and section is kept.
+- 85 function cells start folded (`jupyter.source_hidden`, plus Colab `cellView: form` with a `#@title` line). Cell ids `filters` and
+  `process-preview-summary` are unchanged, so `scripts/run_notebook.py` still works.
+- Checked: JSON loads, ids are unique, every code cell parses (the one `%pip` cell aside). Not run: the notebook, tests, JupyterLab or Colab folding.

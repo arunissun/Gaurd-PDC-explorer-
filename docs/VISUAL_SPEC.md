@@ -23,8 +23,12 @@ states. Do not rank events using the current placeholder
 ## Dashboard figures (2026-10-01 redesign)
 
 The Streamlit dashboard uses `guard_pdc.figures` and `guard_pdc.maps` (one row
-per event family from `analysis.event_summary`). The Stage 6 figures in
-`guard_pdc.visuals` remain for the notebook until it is rebuilt.
+per event family from `analysis.event_summary`). The notebook (rebuilt
+2026-10-06) draws the same figures with its own code, written out in its cells,
+and adds three event-detail figures: age profile with reconciliation, snapshot
+timeline, and change over time (Figures 7, 8, 12 and 13 below, as redrawn there).
+The older Stage 6 figures in `guard_pdc.visuals` are no longer drawn by any
+interface.
 
 Event value rule: per measure, the **peak** across retained PDC snapshots, with
 the **latest** value shown alongside. Exposure is never summed across events or
