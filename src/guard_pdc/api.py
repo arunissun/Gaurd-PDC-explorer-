@@ -10,6 +10,7 @@ from hashlib import sha256
 import http.client
 import json
 from pathlib import Path
+import re
 import threading
 import time
 from typing import Any
@@ -23,6 +24,9 @@ from .taxonomy import KNOWN_CATEGORIES, KNOWN_IMPACT_TYPES, TYPE_CATEGORIES
 
 
 COLLECTIONS = ("pdc-events", "pdc-hazards", "pdc-impacts")
+# The only GET paths (relative to the API root) a caller may request: metadata
+# and queryables of the three PDC collections. Anything else is refused.
+READ_ONLY_GET = re.compile(r"queryables|collections/pdc-(?:events|hazards|impacts)(?:/queryables)?")
 # Retried in place with bounded backoff. 500 is included because large
 # production searches can fail transiently; persistent failures adapt below.
 TRANSIENT_HTTP = {429, 500, 502, 503, 504}
@@ -461,6 +465,7 @@ class PdcApiProvider:
         *,
         method: str = "GET",
         body: Mapping[str, object] | None = None,
+        stats: dict[str, int] | None = None,
     ) -> dict:
         if not self.config.api_token:
             raise ApiError("MONTANDON_API_TOKEN is required for API access", path=_safe_path(url))
@@ -483,6 +488,8 @@ class PdcApiProvider:
                 return data
             except HTTPError as error:
                 if error.code in TRANSIENT_HTTP and attempt < 3:
+                    if stats is not None:
+                        stats["retries"] = stats.get("retries", 0) + 1
                     self._sleeper(_retry_delay(error, attempt))
                     continue
                 raise ApiError(
@@ -494,6 +501,8 @@ class PdcApiProvider:
             except (TimeoutError, URLError, OSError, http.client.HTTPException) as error:
                 # HTTPException covers a connection dropped mid-body (IncompleteRead).
                 if attempt < 3:
+                    if stats is not None:
+                        stats["retries"] = stats.get("retries", 0) + 1
                     self._sleeper(2**attempt)
                     continue
                 raise ApiError(
@@ -505,6 +514,41 @@ class PdcApiProvider:
                 raise ApiError(f"{method} {_safe_path(url)} returned invalid JSON", path=_safe_path(url)) from None
 
         raise ApiError(f"{method} {_safe_path(url)} failed after retries", path=_safe_path(url), recoverable=True)
+
+    def request_json(
+        self,
+        url: str,
+        *,
+        method: str = "GET",
+        body: Mapping[str, object] | None = None,
+        stats: dict[str, int] | None = None,
+    ) -> dict:
+        """Send one read-only request and return its JSON document.
+
+        This is the public single-request wrapper for callers that write their
+        own retrieval loop (the notebook). It keeps the safety rules of the
+        provider: transient failures are retried a bounded number of times,
+        redirects are refused, errors never contain credentials, and the bearer
+        token is only sent to the configured API origin. Only the read-only
+        requests this project needs are allowed: ``GET`` of the queryables and
+        the three PDC collections, and ``search`` (``POST``, or the ``GET``
+        form of a continuation link). ``stats["retries"]`` counts retried attempts.
+        """
+
+        method = str(method).upper()
+        absolute = urljoin(f"{self.config.endpoint}/", url)
+        if _origin(absolute) != _origin(self.config.endpoint):
+            raise ApiError("request points outside the configured API origin", path=_safe_path(absolute))
+        base = urlparse(self.config.endpoint).path.rstrip("/")
+        path = urlparse(absolute).path
+        relative = path[len(base):].strip("/") if path.startswith(f"{base}/") else None
+        allowed = (
+            relative == "search" and method in {"GET", "POST"}
+            or method == "GET" and relative is not None and READ_ONLY_GET.fullmatch(relative) is not None
+        )
+        if not allowed:
+            raise ApiError(f"{method} {_safe_path(absolute)} is not an allowed read-only request", path=_safe_path(absolute))
+        return self._request_json(absolute, method=method, body=body, stats=stats)
 
     def discover(self, collections: Iterable[str] = COLLECTIONS, *, refresh: bool = False) -> CapabilityProfile:
         selected = tuple(collections)

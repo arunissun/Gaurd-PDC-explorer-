@@ -17,8 +17,7 @@ from guard_pdc.api import ApiError, PdcApiProvider
 from guard_pdc.config import MontandonConfig
 from guard_pdc.exports import SHEET_NAMES, build_export_files, public_text, validate_export_bundle, write_export_bundle
 from guard_pdc.models import QuerySpec, ValidationError
-from guard_pdc.notebook_ui import NotebookExplorer
-from guard_pdc.service import PdcEvidenceService, country_group_counts
+from guard_pdc.service import PdcEvidenceService, country_group_counts, retrieve_country_group
 from tests.test_query_and_api import SequenceOpener
 from tests.test_stage6_to_8 import fixture_result
 
@@ -105,33 +104,22 @@ class ExportTests(unittest.TestCase):
 
 
 class DashboardTests(unittest.TestCase):
-    def test_country_group_queries_switch_without_retrieval_and_deduplicate_shared_events(self) -> None:
+    def test_country_group_queries_are_validated_and_deduplicate_shared_events(self) -> None:
         values = dict(analysis_mode="country_detail", country_code="phl, BGD NPL, phl", year=2024, months=tuple(range(1, 13)), hazard_labels=(), impact_types=("affected_total",), categories=("people",), include_zero_values=True, include_missing_geometry=True)
         queries = queries_from_values(**values)
         self.assertEqual(tuple(q.country_code for q in queries), ("BGD", "NPL", "PHL"))
         self.assertTrue(all(q.source_mode == "api_only" and q.refresh_api_cache for q in queries))
         calls = []
+
         def fetch(query):
             calls.append(query)
             return replace(fixture_result(), query=query)
-        notebook = NotebookExplorer(fetch)
-        notebook._render = lambda: None
-        notebook.country.value = values["country_code"]
-        notebook.specific_months.value = tuple(range(1, 13))
-        self.assertEqual(notebook._queries(), queries)
-        self.assertIsNotNone(notebook.retrieve_now())
+
+        results = retrieve_country_group(queries, fetch)
         self.assertEqual(len(calls), 3)
-        self.assertEqual(country_group_counts(notebook.results)["event_families"], 1)
-        notebook.country_selector.value = "PHL"
-        self.assertEqual(notebook.result.query.country_code, "PHL")
-        self.assertEqual(len(calls), 3)
-        manifest = json.loads(build_export_files(notebook.result)["manifest.json"])
+        self.assertEqual(country_group_counts(results)["event_families"], 1)  # the shared event is counted once
+        manifest = json.loads(build_export_files(results["PHL"])["manifest.json"])
         self.assertEqual(manifest["query"]["country_code"], "PHL")
-        previous = notebook.result
-        notebook.country.value = "PHL, XX"
-        self.assertIsNone(notebook.retrieve_now())
-        self.assertIs(notebook.result, previous)
-        self.assertEqual(len(calls), 3)
         with self.assertRaises(ValidationError):
             queries_from_values(**{**values, "country_code": "PHL, XX"})
         with self.assertRaises(ValidationError):
@@ -203,16 +191,8 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(query, expected)
         self.assertEqual(query.fingerprint, expected.fingerprint)
 
-        notebook = NotebookExplorer(lambda _query: fixture_result())
-        self.assertEqual(notebook.source_mode.options, [["Live Montandon API", "api_only"]])
-        notebook.specific_months.value = (1, 2)
-        notebook.hazards.value = ("MH0600",)
-        self.assertEqual(notebook._query(), query)
-
-    def test_interactive_queries_use_fresh_api_without_initializing_local_provider(self) -> None:
-        notebook = NotebookExplorer(lambda _query: fixture_result())
-        notebook.specific_months.value = (1,)
-        dashboard_query = query_from_values(
+    def test_dashboard_queries_use_fresh_api_without_initializing_local_provider(self) -> None:
+        query = query_from_values(
             analysis_mode="country_detail",
             country_code="PHL",
             year=2024,
@@ -224,31 +204,30 @@ class DashboardTests(unittest.TestCase):
             include_missing_geometry=True,
         )
         page = {"type": "FeatureCollection", "features": [], "links": []}
-        for query in (notebook._query(), dashboard_query):
-            with self.subTest(interface_query=query), TemporaryDirectory() as temporary:
-                root = Path(temporary)
-                config = MontandonConfig(
-                    api_token="fixture",
-                    api_cache_path=root / "api-cache",
-                    local_export_path=root / "unused-export.jsonl",
-                    local_index_path=root / "unused-index.sqlite",
-                )
-                opener = SequenceOpener(
-                    page, page, page,
-                    HTTPError(config.url("search"), 401, "Unauthorized", {}, None),
-                )
-                provider = PdcApiProvider(config, opener=opener)
-                provider.query_events(replace(query, refresh_api_cache=False))
-                with patch("guard_pdc.service.PdcLocalProvider", side_effect=AssertionError("Local provider must not be initialized")):
-                    service = PdcEvidenceService(config, api_provider=provider)
-                    for _ in range(2):
-                        result = service.retrieve(query)
-                        self.assertEqual(result.metadata.provider, "api")
-                    with self.assertRaises(ApiError):
-                        service.retrieve(query)
-                    self.assertIsNone(service.local_provider)
-                self.assertEqual(len(opener.calls), 4)
-                self.assertFalse(config.local_index_path.exists())
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            config = MontandonConfig(
+                api_token="fixture",
+                api_cache_path=root / "api-cache",
+                local_export_path=root / "unused-export.jsonl",
+                local_index_path=root / "unused-index.sqlite",
+            )
+            opener = SequenceOpener(
+                page, page, page,
+                HTTPError(config.url("search"), 401, "Unauthorized", {}, None),
+            )
+            provider = PdcApiProvider(config, opener=opener)
+            provider.query_events(replace(query, refresh_api_cache=False))
+            with patch("guard_pdc.service.PdcLocalProvider", side_effect=AssertionError("Local provider must not be initialized")):
+                service = PdcEvidenceService(config, api_provider=provider)
+                for _ in range(2):
+                    result = service.retrieve(query)
+                    self.assertEqual(result.metadata.provider, "api")
+                with self.assertRaises(ApiError):
+                    service.retrieve(query)
+                self.assertIsNone(service.local_provider)
+            self.assertEqual(len(opener.calls), 4)
+            self.assertFalse(config.local_index_path.exists())
 
     def test_dashboard_initial_render_does_not_retrieve(self) -> None:
         app, patches = self._offline_app()

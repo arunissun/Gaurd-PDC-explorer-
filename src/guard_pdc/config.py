@@ -11,8 +11,36 @@ from urllib.parse import urljoin, urlparse
 DEFAULT_ENDPOINT = "https://montandon-eoapi.ifrc.org/stac"
 
 
+TOKEN_VARIABLE = "MONTANDON_API_TOKEN"
+
+
 class ConfigError(ValueError):
     """The local provider configuration is missing or unsafe."""
+
+
+def find_token(start: Path | None = None) -> tuple[str | None, str | None]:
+    """Look for the API token without ever showing it.
+
+    The environment variable comes first, then a ``.env`` file in the current
+    folder or one of its parents (a notebook usually runs one folder below the
+    project root). Returns ``(token, source)``, where ``source`` describes where
+    the token came from; both are ``None`` when nothing was found.
+    """
+
+    token = os.environ.get(TOKEN_VARIABLE, "").strip()
+    if token:
+        return token, f"the {TOKEN_VARIABLE} environment variable"
+    folder = (start or Path.cwd()).resolve()
+    for candidate in (folder, *folder.parents[:3]):
+        path = candidate / ".env"
+        if not path.is_file():
+            continue
+        for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+            name, separator, value = line.strip().removeprefix("export ").partition("=")
+            value = value.strip().strip("'\"")
+            if separator and name.strip() == TOKEN_VARIABLE and value:
+                return value, "a .env file"
+    return None, None
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,9 +72,9 @@ class MontandonConfig:
     @classmethod
     def from_env(cls, *, require_token: bool = True) -> "MontandonConfig":
         endpoint = os.environ.get("MONTANDON_API_URL", DEFAULT_ENDPOINT).strip() or DEFAULT_ENDPOINT
-        token = os.environ.get("MONTANDON_API_TOKEN", "").strip() or None
+        token = os.environ.get(TOKEN_VARIABLE, "").strip() or None
         if require_token and not token:
-            raise ConfigError("MONTANDON_API_TOKEN is required for API access")
+            raise ConfigError(f"{TOKEN_VARIABLE} is required for API access")
 
         local_value = os.environ.get("PDC_LOCAL_EXPORT_PATH", "").strip()
         cache_value = os.environ.get("PDC_API_CACHE_PATH", "data/cache/api").strip()

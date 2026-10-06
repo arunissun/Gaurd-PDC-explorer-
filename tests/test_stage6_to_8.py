@@ -13,7 +13,6 @@ from guard_pdc.analysis import build_analysis_frames, gender_message
 from guard_pdc.api import ApiQueryResult, PartitionResult
 from guard_pdc.config import MontandonConfig
 from guard_pdc.models import QuerySpec
-from guard_pdc.notebook_ui import NotebookExplorer
 from guard_pdc.service import PdcEvidenceService
 from guard_pdc.taxonomy import CATEGORY_ORDER
 from guard_pdc.visuals import (
@@ -217,41 +216,6 @@ class MapTests(unittest.TestCase):
         invalid = deepcopy(valid)
         invalid["features"][0]["geometry"]["coordinates"][0][0] = [220.0, 14.0]
         self.assertEqual(validate_footprint_geojson(invalid).status, "invalid")
-
-
-class NotebookTests(unittest.TestCase):
-    def test_view_changes_do_not_retrieve_and_errors_preserve_last_result(self) -> None:
-        result = fixture_result()
-        calls = []
-
-        def retrieve(query: QuerySpec):
-            calls.append(query)
-            return result
-
-        app = NotebookExplorer(retrieve)
-        app._render = lambda: None
-        app.category_selector.value = "households"
-        self.assertEqual(calls, [])
-        self.assertIs(app.retrieve_now(), result)
-        self.assertEqual(len(calls), 1)
-
-        app.retrieve_fn = lambda _query: (_ for _ in ()).throw(RuntimeError("fixture failure"))
-        self.assertIsNone(app.retrieve_now())
-        self.assertIs(app.result, result)
-
-    def test_fixture_retrieval_renders_every_tab(self) -> None:
-        result = fixture_result()
-        app = NotebookExplorer(lambda _query: result)
-        with patch("guard_pdc.notebook_ui.display") as rendered:
-            self.assertIs(app.retrieve_now(), result)
-        self.assertEqual(app.progress.value, 4)
-        self.assertGreaterEqual(rendered.call_count, 8)
-
-    def test_notebook_defaults_do_not_call_retrieve(self) -> None:
-        notebook = json.loads((ROOT / "notebooks" / "pdc_evidence_explorer.ipynb").read_text(encoding="utf-8"))
-        code = "\n".join("".join(cell.get("source", [])) for cell in notebook["cells"] if cell["cell_type"] == "code")
-        self.assertIn("create_notebook_app", code)
-        self.assertNotIn("retrieve_now", code)
 
 
 if __name__ == "__main__":
