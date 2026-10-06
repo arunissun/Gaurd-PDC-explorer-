@@ -7,21 +7,32 @@ name = "guard-pdc-explorer"
 version = "0.1.0"
 description = "Read-only Montandon PDC evidence explorer for GUARD preparation"
 requires-python = ">=3.12,<3.14"
+# What the package and the notebook need to run. This is all that `pip install` pulls in
+# (on Binder and Colab), so the install stays small and quick.
 dependencies = [
-  "pystac-client>=0.9,<1",
-  "pystac>=1.13,<2",
+  "numpy>=1.26",
   "pandas>=2.2,<3",
   "plotly>=6,<7",
-  "manywidgets",
-  "ipywidgets>=8.1,<9",
-  "lonboard",
-  "pyarrow",
-  "folium>=0.19,<1",
-  "streamlit",
+  "ipywidgets>=7.7,<9",
   "openpyxl>=3.1,<4",
+  "pyproj>=3.6",
+]
+
+[dependency-groups]
+# Installed by `uv sync` for development: the Streamlit dashboard, JupyterLab and the notebook
+# runner (nbclient), and the libraries that only the older Stage 6-8 helpers (visuals.py) and the
+# profiling scripts use.
+dev = [
+  "streamlit",
   "jupyterlab>=4.3,<5",
   "nbformat>=5.10,<6",
   "nbclient>=0.10,<1",
+  "lonboard",
+  "manywidgets",
+  "pyarrow",
+  "folium>=0.19,<1",
+  "pystac>=1.13,<2",
+  "pystac-client>=0.9,<1",
 ]
 
 [tool.hatch.build.targets.wheel]

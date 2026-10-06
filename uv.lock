@@ -501,16 +501,22 @@ name = "guard-pdc-explorer"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "folium" },
     { name = "ipywidgets" },
+    { name = "numpy" },
+    { name = "openpyxl" },
+    { name = "pandas" },
+    { name = "plotly" },
+    { name = "pyproj" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "folium" },
     { name = "jupyterlab" },
     { name = "lonboard" },
     { name = "manywidgets" },
     { name = "nbclient" },
     { name = "nbformat" },
-    { name = "openpyxl" },
-    { name = "pandas" },
-    { name = "plotly" },
     { name = "pyarrow" },
     { name = "pystac" },
     { name = "pystac-client" },
@@ -519,16 +525,22 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "ipywidgets", specifier = ">=7.7,<9" },
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "openpyxl", specifier = ">=3.1,<4" },
+    { name = "pandas", specifier = ">=2.2,<3" },
+    { name = "plotly", specifier = ">=6,<7" },
+    { name = "pyproj", specifier = ">=3.6" },
+]
+
+[package.metadata.requires-dev]
+dev = [
     { name = "folium", specifier = ">=0.19,<1" },
-    { name = "ipywidgets", specifier = ">=8.1,<9" },
     { name = "jupyterlab", specifier = ">=4.3,<5" },
     { name = "lonboard" },
     { name = "manywidgets" },
     { name = "nbclient", specifier = ">=0.10,<1" },
     { name = "nbformat", specifier = ">=5.10,<6" },
-    { name = "openpyxl", specifier = ">=3.1,<4" },
-    { name = "pandas", specifier = ">=2.2,<3" },
-    { name = "plotly", specifier = ">=6,<7" },
     { name = "pyarrow" },
     { name = "pystac", specifier = ">=1.13,<2" },
     { name = "pystac-client", specifier = ">=0.9,<1" },

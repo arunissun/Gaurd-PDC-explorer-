@@ -1,0 +1,7 @@
+name: pdc-explorer
+channels:
+  - conda-forge
+dependencies:
+  # The project needs Python 3.12 or later.
+  - python=3.12
+  - pip

@@ -1,0 +1,5 @@
+#!/bin/bash
+# Binder runs this once while it builds the image, after the repository has been copied in.
+# It installs the project, and with it the few libraries the notebook needs (see pyproject.toml).
+set -e
+pip install --no-cache-dir "${REPO_DIR:-.}"

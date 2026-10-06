@@ -1,0 +1,2 @@
+# Binder runs this script on Linux, so it must keep Unix line endings.
+binder/postBuild text eol=lf
