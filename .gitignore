@@ -31,3 +31,6 @@ outputs/exports/*
 
 # Local-only tool settings
 .claude/settings.local.json
+
+# Local-only notes (not published)
+docs/EVIDENCE_RULES_AND_LIMITATIONS.md

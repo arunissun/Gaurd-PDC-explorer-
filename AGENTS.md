@@ -63,7 +63,7 @@ This project is the read-only PDC evidence explorer described in
 - Implement only the requested stage. Later-stage modules may exist as empty, importable placeholders but must not claim to retrieve or analyse data.
 - Keep the Streamlit dashboard thin; its business logic belongs in the shared package.
 - The notebook deliberately writes out its retrieval, processing, and chart code in readable cells (a few small functions per cell, with the call that
-  runs them in the same cell; function cells start folded). Token handling, retries, redirect refusal, the read-only request allow-list, country/hazard/measure definitions,
+  runs them in the same cell; every code cell starts folded). Token handling, retries, redirect refusal, the read-only request allow-list, country/hazard/measure definitions,
   the colour palette, and alert-area fetching stay in the package. Because the notebook has its own retrieval code, compare it with the
   dashboard for the same query (event IDs, counts, peak values) after any change to either.
 - Use focused local checks and state clearly whether a result is local, staging, production, or unverified.

@@ -68,8 +68,8 @@ credentials or local paths.
 
 `notebooks/pdc_evidence_explorer.ipynb` is a step-by-step notebook that shows how
 the evidence is retrieved and processed instead of hiding it behind widgets. Run
-the cells from top to bottom. Cells that define functions start folded (unfold one to read it); the call that
-runs it is in the same cell.
+the cells from top to bottom. Every code cell starts folded (unfold one to read it; click the blue bar at its left edge to fold it again); a function's call is in the same
+cell as the function.
 
 ```powershell
 uv run --env-file .env jupyter lab notebooks/pdc_evidence_explorer.ipynb
@@ -85,7 +85,9 @@ uv run --env-file .env jupyter lab notebooks/pdc_evidence_explorer.ipynb
 | 7 View | Country shown, measure shown, tsunami bulletins; pickers never call the API |
 | 8–14 | Overview, map, events, exposure, one event (alert area, age bands, snapshot history), country comparison (2+ countries), data quality |
 | 15 Export | `outputs/notebook/<run id>/<country>/`: CSV, Excel, GeoJSON, report, manifest; re-opened and checked, the token searched for |
-| 16 Rules | What the numbers do and do not mean |
+
+Every table sits in a fold: short tables start open, long ones folded; click the title to open or close it.
+The maps (steps 9 and 13) have **Events**, **Clusters** and **Density** layers.
 
 After changing the filters, run again from step 4 down. Figures follow the dashboard's style
 (box plots, full country names, log-sized map dots, the same hazard colours). The notebook
