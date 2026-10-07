@@ -1054,3 +1054,31 @@ impact filter into type/category pairs; no "retry failed parts" (re-running step
 - 85 function cells start folded (`jupyter.source_hidden`, plus Colab `cellView: form` with a `#@title` line). Cell ids `filters` and
   `process-preview-summary` are unchanged, so `scripts/run_notebook.py` still works.
 - Checked: JSON loads, ids are unique, every code cell parses (the one `%pip` cell aside). Not run: the notebook, tests, JupyterLab or Colab folding.
+
+## 2026-10-07 — Notebook run visually in JupyterLab (live, PHL + BGD + NPL, 2024); fixes
+
+**Test setup:** JupyterLab 4.6.4 from the project environment (`uv run ... jupyter lab`, local, 127.0.0.1:8888, entry `jupyterlab` in
+`.claude/launch.json`), driven in the built-in browser. Production Montandon API, read-only, token from `.env` (never printed).
+Filters picked through the widgets: Philippines, Bangladesh, Nepal; 2024, all months, all hazards, default measures (no age bands).
+
+**Result:** retrieval 22 s, 107 pages, 6,902 unique items, 0 retried requests, 0 split windows, 0 repeated item IDs. Event families /
+snapshots / hazard items / exposure values: BGD 59 / 251 / 251 / 1,255; NPL 112 / 162 / 162 / 810; PHL 369 / 573 / 573 / 2,865 (the item
+counts add up to the 6,902 retrieved). Sections 1 to 15 ran with no cell error. Viewed in the browser: sign-in, filter widgets (multi-select
+with Ctrl+click, summary line), folded function cells, live progress bars, overview cards and interactive charts, event map, largest-events bar chart and timeline, combined map,
+choropleth. The choropleth counts (PHL 358 without 11 tsunami bulletins, NPL 112, BGD 59) and the 522 distinct events on the combined map
+equal the dashboard's recorded values; the scripted comparison (`scripts/compare_notebook_dashboard.py`) was **not** run.
+
+**Found and fixed (notebook only):**
+1. *Clusters looked the same as Events on a country map.* A country map opens at zoom about 7.2, above the fixed cluster limit of 6, so no
+   circles were drawn. The cluster limit is now `max(6, ceil(opening zoom) + 2)`; the combined map (opens at zoom about 2) is unchanged. Verified: BGD shows circles 2, 6, 10, 2, 2.
+   `src/guard_pdc/maps.py` (dashboard) has the same fixed limit and was **not** changed.
+2. *No density map in the notebook.* Added a **Density** layer (heat layer, same settings as the package) to the map in steps 9 and 13.
+3. *Tables.* New helper `fold` (cell `helpers-fold`): every table is shown in a fold, open when it has up to 12 rows, folded when longer. Applied to all 11 table outputs.
+4. *Step 16 (evidence rules and limitations)* removed from the notebook; the text is kept in a local, git-ignored file (`docs/EVIDENCE_RULES_AND_LIMITATIONS.md`) and is not published. The notebook has 113 cells.
+
+**Seen, not fixed:** the label "Hazards & e…" of the second progress bar is clipped; "Retrieved in N s" is measured when the last step 5 cell runs, so it includes the wait if
+that cell is run later; JupyterLab saves outputs into the notebook file (clear them before committing).
+
+**Checked headless afterwards:** the changed cells (map, events, exposure, event detail, compare, quality, export) ran in the live kernel with no error and the folds appeared as
+designed. A check script re-ran the notebook from the fold cell on, including one more live PHL 2024 retrieval (read-only). **Not run:** unit suite, committed notebook test,
+failure ladder with injected 5xx, Binder and Colab, event-detail and distribution pickers by hand, review of the exported files.
